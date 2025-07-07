@@ -1,0 +1,18 @@
+processing:
+  chunk_size: 512
+  chunk_overlap: 50
+  embedding_model: "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+  spacy_model: "ru_core_news_md"
+  min_similarity: 0.65
+
+qdrant:
+  host: "localhost"
+  port: 6333
+  collection_name: "document_chunks"
+  vector_size: 768
+
+paths:
+  data_dir: "data"
+  output_dir: "processed"
+  log_file: "C:/Users/Lenovo/Documents/Py/Document DB/processing.log"
+  tempdir: "temp"

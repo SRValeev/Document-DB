@@ -1,0 +1,22 @@
+# Виртуальная среда
+.venv/
+venv-offline/
+
+# Данные и кэши
+data/
+temp/
+processed/
+__pycache__/
+*.pyc
+.env
+
+# Логи
+*.log
+
+# Временные файлы
+*.tmp
+*.temp
+
+# Системные файлы
+.DS_Store
+Thumbs.db
