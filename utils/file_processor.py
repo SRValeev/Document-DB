@@ -204,7 +204,7 @@ class FileProcessor:
         texts = [chunk['text'] for chunk in chunks]
         embeddings = []
         
-        batch_size = 50  # Уменьшенный размер батча для Windows
+        batch_size = 50  
         for i in tqdm(range(0, len(texts), batch_size), desc="Векторизация"):
             batch = texts[i:i+batch_size]
             embeddings.extend(self.embedding_model.encode(batch))
