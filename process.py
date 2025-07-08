@@ -4,7 +4,8 @@ from tqdm import tqdm
 from utils.helpers import setup_logging, load_config
 from parallel_processor import parallel_process
 
-def main():
+def main() -> int:
+    """Основная функция обработки документов"""
     config = load_config()
     setup_logging(config['paths']['log_file'])
     output_dir = config['paths']['output_dir']
@@ -27,7 +28,12 @@ def main():
     # Создание глобального индекса
     processor.create_global_index(output_dir)
     
-    print(f"\nОбработано {len(all_chunks)} файлов. Результаты в {output_dir}")
+    return len(all_chunks)  # Возвращаем количество обработанных файлов
 
 if __name__ == "__main__":
-    main()
+    try:
+        processed_files = main()
+        print(f"Успешно обработано {processed_files} файлов")
+    except Exception as e:
+        logging.error(f"Ошибка обработки документов: {str(e)}")
+        raise

@@ -1,4 +1,3 @@
-<!-- web/templates/search.html -->
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -7,3 +6,13 @@
     <title>Ошибка</title>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
+<body>
+    <div class="container error-container">
+        <h1>Произошла ошибка</h1>
+        <div class="error-message">
+            {{ error }}
+        </div>
+        <a href="/" class="btn">На главную</a>
+    </div>
+</body>
+</html>

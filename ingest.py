@@ -5,45 +5,32 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, VectorParams, Distance
 from utils.helpers import load_config
 
-def main():
+def main() -> int:
+    """Основная функция загрузки данных в Qdrant"""
     config = load_config()
     processed_dir = config['paths']['output_dir']
     
-    # Инициализация клиента Qdrant с обработкой ошибок
     try:
         client = QdrantClient(
             host=config['qdrant']['host'],
             port=config['qdrant']['port'],
-            timeout=10  # Увеличиваем таймаут
+            timeout=10
         )
         
-        # Проверка соединения
-        client.get_collections()
-    except Exception as e:
-        print(f"Ошибка подключения к Qdrant: {str(e)}")
-        print("Проверьте, запущен ли Qdrant сервер и доступен по указанному адресу")
-        return
-    
-    # Создание коллекции
-    try:
-        client.recreate_collection(  # Используем recreate вместо create
+        # Создаем коллекцию (если не существует)
+        client.recreate_collection(
             collection_name=config['qdrant']['collection_name'],
             vectors_config=VectorParams(
                 size=config['qdrant']['vector_size'],
                 distance=Distance.COSINE
             )
         )
-        print(f"Коллекция {config['qdrant']['collection_name']} создана")
-    except Exception as e:
-        print(f"Ошибка создания коллекции: {str(e)}")
-        return
-    
-    # Загрузка чанков
-    points = []
-    for file in os.listdir(processed_dir):
-        if file.endswith('.json') and file != 'global_index.json':
-            file_path = os.path.join(processed_dir, file)
-            try:
+        
+        # Сбор всех чанков для загрузки
+        points = []
+        for file in os.listdir(processed_dir):
+            if file.endswith('.json') and file != 'global_index.json':
+                file_path = os.path.join(processed_dir, file)
                 with open(file_path, 'r', encoding='utf-8') as f:
                     chunks = json.load(f)
                     for chunk in chunks:
@@ -56,32 +43,37 @@ def main():
                                     "metadata": chunk['metadata']
                                 }
                             ))
+        
+        if not points:
+            print("Нет данных для загрузки")
+            return 0
+        
+        # Пакетная загрузка
+        batch_size = 50
+        success_count = 0
+        
+        for i in tqdm(range(0, len(points), batch_size), desc="Загрузка в Qdrant"):
+            batch = points[i:i+batch_size]
+            try:
+                client.upsert(
+                    collection_name=config['qdrant']['collection_name'],
+                    points=batch,
+                    wait=True
+                )
+                success_count += len(batch)
             except Exception as e:
-                print(f"Ошибка загрузки файла {file}: {str(e)}")
-                continue
+                print(f"\nОшибка загрузки батча {i//batch_size}: {str(e)}")
+        
+        print(f"\nУспешно загружено {success_count}/{len(points)} чанков")
+        return success_count
     
-    if not points:
-        print("Нет данных для загрузки")
-        return
-    
-    # Пакетная загрузка с обработкой ошибок
-    batch_size = 50  # Уменьшенный размер батча
-    success_count = 0
-    
-    for i in tqdm(range(0, len(points), batch_size), desc="Загрузка в Qdrant"):
-        batch = points[i:i+batch_size]
-        try:
-            client.upsert(
-                collection_name=config['qdrant']['collection_name'],
-                points=batch,
-                wait=True  # Ждем подтверждения
-            )
-            success_count += len(batch)
-        except Exception as e:
-            print(f"\nОшибка загрузки батча {i//batch_size}: {str(e)}")
-            # Можно добавить логику повторной попытки
-    
-    print(f"\nУспешно загружено {success_count}/{len(points)} чанков")
+    except Exception as e:
+        print(f"Критическая ошибка: {str(e)}")
+        return 0
 
 if __name__ == "__main__":
-    main()
+    loaded_chunks = main()
+    if loaded_chunks > 0:
+        print("Данные успешно загружены в Qdrant")
+    else:
+        print("Не удалось загрузить данные")
