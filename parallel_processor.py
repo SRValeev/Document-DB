@@ -25,11 +25,14 @@ def parallel_process(config):
             if file.lower().endswith(('.pdf', '.doc', '.docx')):
                 file_paths.append(os.path.join(root, file))
     
+    # Используем настройки производительности из конфига
+    perf_config = config.get('performance', {})
+    max_workers = perf_config.get('max_threads', 2)
+    
     # Многопоточная обработка
     results = {}
-    num_workers = config['processing'].get('num_workers', 4)
     
-    with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [
             executor.submit(process_single_file, (config, fp)) 
             for fp in file_paths

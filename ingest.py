@@ -1,4 +1,3 @@
-# ingest.py
 import os
 import json
 from tqdm import tqdm
@@ -7,14 +6,16 @@ from qdrant_client.models import PointStruct, VectorParams, Distance
 from utils.helpers import load_config
 
 def main() -> int:
+    """Основная функция загрузки данных в Qdrant"""
     config = load_config()
     processed_dir = config['paths']['output_dir']
+    perf_config = config.get('performance', {})
     
     try:
         client = QdrantClient(
             host=config['qdrant']['host'],
             port=config['qdrant']['port'],
-            timeout=10
+            timeout=30  # Увеличили таймаут
         )
         
         # Создаем коллекцию (если не существует)
@@ -50,8 +51,8 @@ def main() -> int:
             print("Нет данных для загрузки")
             return 0
         
-        # Пакетная загрузка
-        batch_size = 100
+        # Используем настройки производительности из конфига
+        batch_size = perf_config.get('qdrant_batch_size', 50)
         success_count = 0
         
         for i in tqdm(range(0, len(points), batch_size), desc="Загрузка в Qdrant"):
@@ -60,11 +61,15 @@ def main() -> int:
                 client.upsert(
                     collection_name=config['qdrant']['collection_name'],
                     points=batch,
-                    wait=True
+                    wait=True,
+                    timeout=60  # Увеличили таймаут
                 )
                 success_count += len(batch)
             except Exception as e:
                 print(f"\nОшибка загрузки батча {i//batch_size}: {str(e)}")
+                # Пробуем уменьшить размер батча
+                batch_size = max(10, batch_size // 2)
+                print(f"Уменьшаем размер батча до {batch_size}")
         
         print(f"\nУспешно загружено {success_count}/{len(points)} чанков")
         return success_count

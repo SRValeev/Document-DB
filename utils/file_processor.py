@@ -8,6 +8,7 @@ import camelot
 import logging
 import tempfile
 import uuid
+import numpy as np
 import pytesseract
 from PIL import Image
 from io import BytesIO
@@ -20,10 +21,32 @@ from .helpers import load_config, normalize_text, windows_path, generate_unique_
 class FileProcessor:
     def __init__(self, config):
         self.config = config
-        self.nlp = spacy.load(config['processing']['spacy_model'])
-        self.embedding_model = SentenceTransformer(
-            config['processing']['embedding_model']
-        )
+        self.perf_config = config.get('performance', {})
+        
+        try:
+            self.nlp = spacy.load(config['processing']['spacy_model'])
+        except Exception as e:
+            logging.error(f"Ошибка загрузки модели Spacy: {str(e)}")
+            self.nlp = None
+        
+        # Настройки производительности
+        device = self.perf_config.get('device', 'cpu')
+        low_memory = self.perf_config.get('low_memory_mode', True)
+        
+        try:
+            self.embedding_model = SentenceTransformer(
+                config['processing']['embedding_model'],
+                device=device
+            )
+            
+            # Оптимизации для режима экономии памяти
+            if low_memory:
+                self.embedding_model.max_seq_length = 128
+                self.embedding_model._first_module().max_seq_length = 128
+        except Exception as e:
+            logging.error(f"Ошибка загрузки модели эмбеддингов: {str(e)}")
+            self.embedding_model = None
+
         self.header_pattern = re.compile(
             r'^(Глава|Раздел|Часть|Параграф)\s+\d+[.:]?\s+', 
             re.IGNORECASE
@@ -45,6 +68,10 @@ class FileProcessor:
         self.chunk_counter = 1
 
     def process_file(self, file_path):
+        if not self.nlp or not self.embedding_model:
+            logging.error("Модели не загружены, обработка невозможна")
+            return []
+            
         file_id = generate_unique_id()
         self.file_index[file_id] = windows_path(file_path)
         
@@ -60,71 +87,74 @@ class FileProcessor:
         current_chapter = ""
         current_section = ""
         
-        with fitz.open(file_path) as doc:
-            try:
-                toc = doc.get_toc()
-            except:
-                toc = []
-                logging.warning(f"Не удалось извлечь оглавление для {file_path}")
-            
-            for page_num in tqdm(range(len(doc)), desc=f"Обработка {file_id}"):
-                page = doc.load_page(page_num)
-                text = page.get_text("text", sort=True)
+        try:
+            with fitz.open(file_path) as doc:
+                try:
+                    toc = doc.get_toc()
+                except:
+                    toc = []
+                    logging.warning(f"Не удалось извлечь оглавление для {file_path}")
                 
-                # Обработка оглавления
-                for item in toc:
-                    if item[2] == page_num + 1:
-                        if item[0] == 1:
-                            current_chapter = normalize_text(item[1])
-                        elif item[0] == 2:
-                            current_section = normalize_text(item[1])
-                
-                self._register_headers(file_id, page_num, current_chapter, current_section)
-                
-                # Обработка изображений
-                if self.use_ocr:
-                    image_list = page.get_images(full=True)
-                    for img_index, img in enumerate(image_list, 1):
-                        xref = img[0]
-                        base_image = doc.extract_image(xref)
-                        image_bytes = base_image["image"]
-                        image = Image.open(BytesIO(image_bytes))
-                        
-                        # OCR обработка
-                        try:
-                            ocr_text = pytesseract.image_to_string(image, lang='rus+eng')
-                            ocr_text = normalize_text(ocr_text)
-                            if ocr_text:
-                                chunks.append(self._create_chunk(
-                                    f"Изображение {img_index}: {ocr_text}",
-                                    file_id, 
-                                    page_num,
-                                    "image",
-                                    current_chapter,
-                                    current_section
-                                ))
-                        except Exception as e:
-                            logging.error(f"Ошибка OCR: {str(e)}")
-                
-                # Обработка текста
-                blocks = page.get_text("blocks")
-                page_text = ""
-                for block in blocks:
-                    if not block[4].strip():
-                        continue
-                    block_text = normalize_text(block[4].replace('\n', ' '))
-                    page_text += block_text + " "
-                
-                # Разбивка на чанки с учетом контекста
-                if page_text:
-                    chunks.extend(self._split_text_into_chunks(
-                        page_text, 
-                        file_id, 
-                        page_num,
-                        "text",
-                        current_chapter,
-                        current_section
-                    ))
+                for page_num in tqdm(range(len(doc)), desc=f"Обработка {file_id}"):
+                    page = doc.load_page(page_num)
+                    
+                    # Обработка оглавления
+                    for item in toc:
+                        if item[2] == page_num + 1:
+                            if item[0] == 1:
+                                current_chapter = normalize_text(item[1])
+                            elif item[0] == 2:
+                                current_section = normalize_text(item[1])
+                    
+                    self._register_headers(file_id, page_num, current_chapter, current_section)
+                    
+                    # Обработка изображений (только если включено в конфиге)
+                    if self.use_ocr:
+                        image_list = page.get_images(full=True)
+                        for img_index, img in enumerate(image_list, 1):
+                            xref = img[0]
+                            base_image = doc.extract_image(xref)
+                            image_bytes = base_image["image"]
+                            image = Image.open(BytesIO(image_bytes))
+                            
+                            # OCR обработка
+                            try:
+                                ocr_text = pytesseract.image_to_string(image, lang='rus+eng')
+                                ocr_text = normalize_text(ocr_text)
+                                if ocr_text:
+                                    chunks.append(self._create_chunk(
+                                        f"Изображение {img_index}: {ocr_text}",
+                                        file_id, 
+                                        page_num,
+                                        "image",
+                                        current_chapter,
+                                        current_section
+                                    ))
+                            except Exception as e:
+                                logging.error(f"Ошибка OCR: {str(e)}")
+                    
+                    # Обработка текста
+                    blocks = page.get_text("blocks")
+                    page_text = ""
+                    for block in blocks:
+                        if not block[4].strip():
+                            continue
+                        block_text = normalize_text(block[4].replace('\n', ' '))
+                        page_text += block_text + " "
+                    
+                    # Разбивка на чанки с учетом контекста
+                    if page_text:
+                        chunks.extend(self._split_text_into_chunks(
+                            page_text, 
+                            file_id, 
+                            page_num,
+                            "text",
+                            current_chapter,
+                            current_section
+                        ))
+        except Exception as e:
+            logging.error(f"Ошибка обработки PDF {file_path}: {str(e)}")
+            return []
         
         return chunks
 
@@ -245,13 +275,29 @@ class FileProcessor:
         self.global_headers[key] = chapter or section
 
     def vectorize_chunks(self, chunks):
+        if not chunks or not self.embedding_model:
+            return chunks
+            
         texts = [chunk['text'] for chunk in chunks]
         embeddings = []
         
-        batch_size = 32
+        # Используем настройки производительности из конфига
+        batch_size = self.perf_config.get('embedding_batch_size', 8)
+        
         for i in tqdm(range(0, len(texts), batch_size), desc="Векторизация"):
             batch = texts[i:i+batch_size]
-            embeddings.extend(self.embedding_model.encode(batch))
+            try:
+                batch_embeddings = self.embedding_model.encode(
+                    batch,
+                    batch_size=batch_size,
+                    convert_to_numpy=True,
+                    show_progress_bar=False
+                )
+                embeddings.extend(batch_embeddings)
+            except Exception as e:
+                logging.error(f"Ошибка векторизации: {str(e)}")
+                # Добавляем нулевые эмбеддинги в случае ошибки
+                embeddings.extend([np.zeros(self.config['qdrant']['vector_size'])] * len(batch))
         
         for i, chunk in enumerate(chunks):
             chunk['embedding'] = embeddings[i].tolist()

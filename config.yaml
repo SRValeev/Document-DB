@@ -1,13 +1,28 @@
-# config.yaml
 processing:
   chunk_size: 512
   chunk_overlap: 50
   embedding_model: "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
   spacy_model: "ru_core_news_md"
   min_similarity: 0.65
-  num_workers: 4
-  use_ocr: false  # Включение обработки изображений
-  tesseract_path: "/usr/bin/tesseract"  # Путь к Tesseract OCR
+  num_workers: 2  # Уменьшено для экономии памяти
+  use_ocr: false  # По умолчанию выключено
+  tesseract_path: ""  # Путь к Tesseract OCR
+
+# Настройки производительности
+performance:
+  embedding_batch_size: 8  # Размер батча для векторизации
+  qdrant_batch_size: 50    # Размер батча для загрузки в Qdrant
+  max_threads: 2           # Максимальное число потоков
+  device: "cpu"            # Устройство для обработки (cpu/cuda)
+  low_memory_mode: true    # Режим экономии памяти
+
+# Пресет для слабых систем (раскомментировать при необходимости)
+# performance:
+#   embedding_batch_size: 4
+#   qdrant_batch_size: 20
+#   max_threads: 1
+#   device: "cpu"
+#   low_memory_mode: true
 
 qdrant:
   host: "localhost"
@@ -18,6 +33,6 @@ qdrant:
 paths:
   data_dir: "data"
   output_dir: "processed"
-  images_dir: "processed/images"  # Директория для изображений
+  images_dir: "processed/images"
   log_file: "processing.log"
   tempdir: "temp"

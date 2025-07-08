@@ -1,15 +1,19 @@
 import os
 import logging
 from tqdm import tqdm
-from utils.helpers import setup_logging, load_config
+from utils.helpers import setup_logging, load_config, create_dir
 from parallel_processor import parallel_process
 
 def main() -> int:
     """Основная функция обработки документов"""
     config = load_config()
-    setup_logging(config['paths']['log_file'])
-    output_dir = config['paths']['output_dir']
-    os.makedirs(output_dir, exist_ok=True)
+    
+    # Настройка логирования с проверкой
+    log_file = config.get('paths', {}).get('log_file', '')
+    setup_logging(log_file)
+    
+    output_dir = config.get('paths', {}).get('output_dir', 'processed')
+    create_dir(output_dir)  # Гарантируем создание директории
     
     # Параллельная обработка файлов
     all_chunks = parallel_process(config)
