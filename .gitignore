@@ -3,9 +3,12 @@
 venv-offline/
 
 # Данные и кэши
+qdrant/
+storage/
 data/
 temp/
 processed/
+snapshots/
 __pycache__/
 *.pyc
 .env
@@ -16,6 +19,7 @@ __pycache__/
 # Временные файлы
 *.tmp
 *.temp
+*.qdrant*
 
 # Системные файлы
 .DS_Store

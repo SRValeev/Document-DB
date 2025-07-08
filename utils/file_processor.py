@@ -50,106 +50,103 @@ class FileProcessor:
             raise ValueError(f"Неподдерживаемый формат: {file_path}")
 
     def _process_pdf(self, file_path, file_id):
-        # Используем Ghostscript для ускорения обработки
-        doc = fitz.open(file_path, filetype="pdf")
         chunks = []
         current_chapter = ""
         current_section = ""
         
-        try:
-            toc = doc.get_toc()
-        except:
-            toc = []
-            logging.warning(f"Не удалось извлечь оглавление для {file_path}")
-        
-        for page_num in tqdm(range(len(doc)), desc=f"Обработка {file_id}"):
-            page = doc.load_page(page_num)
-            text = page.get_text("text", sort=True)
-            
-            # Обработка оглавления
-            for item in toc:
-                if item[2] == page_num + 1:
-                    if item[0] == 1:
-                        current_chapter = normalize_text(item[1])
-                    elif item[0] == 2:
-                        current_section = normalize_text(item[1])
-            
-            self._register_headers(file_id, page_num, current_chapter, current_section)
-            
-            # Обработка таблиц
-            tmp_path = None
+        # Используем контекстный менеджер для PDF документа
+        with fitz.open(file_path) as doc:
             try:
-                # Создаем временный файл только для текущей страницы
-                with tempfile.NamedTemporaryFile(
-                    dir=self.temp_dir, 
-                    suffix=".pdf", 
-                    delete=False
-                ) as tmp:
-                    tmp_path = tmp.name
+                toc = doc.get_toc()
+            except:
+                toc = []
+                logging.warning(f"Не удалось извлечь оглавление для {file_path}")
+            
+            for page_num in tqdm(range(len(doc)), desc=f"Обработка {file_id}"):
+                page = doc.load_page(page_num)
+                text = page.get_text("text", sort=True)
                 
-                # Сохраняем только текущую страницу
-                single_page = fitz.open()
-                single_page.insert_pdf(doc, from_page=page_num, to_page=page_num)
-                single_page.save(tmp_path)
-                single_page.close()
-
-                tables = camelot.read_pdf(
-                    windows_path(tmp_path), 
-                    pages="1",  # Всегда первая страница во временном файле
-                    flavor='lattice'
-                )
-            except Exception as e:
-                logging.error(f"Ошибка обработки таблиц: {str(e)}")
-                tables = []
-            finally:
-                if tmp_path and os.path.exists(tmp_path):
-                    try:
-                        os.unlink(tmp_path)
-                    except Exception as e:
-                        logging.error(f"Ошибка удаления временного файла: {str(e)}")
-            
-            # Обработка извлеченных таблиц
-            for i, table in enumerate(tables):
-                table_text = f"ТАБЛИЦА {file_id}-{page_num+1}.{i+1}: {table.df.to_csv(sep='|', index=False)}"
-                chunks.append(self._create_chunk(
-                    table_text, 
-                    file_id, 
-                    page_num,
-                    "table",
-                    current_chapter,
-                    current_section
-                ))
-            
-            # Обработка текста
-            blocks = page.get_text("blocks")
-            for block in blocks:
-                if not block[4].strip():
-                    continue
+                # Обработка оглавления
+                for item in toc:
+                    if item[2] == page_num + 1:
+                        if item[0] == 1:
+                            current_chapter = normalize_text(item[1])
+                        elif item[0] == 2:
+                            current_section = normalize_text(item[1])
+                
+                self._register_headers(file_id, page_num, current_chapter, current_section)
+                
+                # Обработка таблиц с использованием временного файла
+                tmp_path = None
+                try:
+                    # Создаем временный файл
+                    with tempfile.NamedTemporaryFile(
+                        dir=self.temp_dir, 
+                        suffix=".pdf", 
+                        delete=False
+                    ) as tmp:
+                        tmp_path = tmp.name
                     
-                block_text = normalize_text(block[4].replace('\n', ' '))
-                content_type = "text"
-                
-                if "рисунок" in block_text.lower() or "изображение" in block_text.lower():
-                    content_type = "image_caption"
-                elif self.header_pattern.match(block_text):
-                    content_type = "header"
-                elif self.subheader_pattern.match(block_text):
-                    content_type = "subheader"
-                
-                # Разбивка на предложения
-                doc_text = self.nlp(block_text)
-                for sent in doc_text.sents:
-                    if len(sent.text.strip()) > 10:
+                    # Сохраняем только текущую страницу
+                    with fitz.open() as single_page:
+                        single_page.insert_pdf(doc, from_page=page_num, to_page=page_num)
+                        single_page.save(tmp_path)
+                    
+                    tables = camelot.read_pdf(
+                        windows_path(tmp_path), 
+                        pages="1",
+                        flavor='lattice'
+                    )
+                    
+                    for i, table in enumerate(tables):
+                        table_text = f"ТАБЛИЦА {file_id}-{page_num+1}.{i+1}: {table.df.to_csv(sep='|', index=False)}"
                         chunks.append(self._create_chunk(
-                            sent.text, 
+                            table_text, 
                             file_id, 
                             page_num,
-                            content_type,
+                            "table",
                             current_chapter,
                             current_section
                         ))
+                except Exception as e:
+                    logging.error(f"Ошибка обработки таблиц: {str(e)}")
+                finally:
+                    # Гарантированное удаление временного файла
+                    if tmp_path and os.path.exists(tmp_path):
+                        try:
+                            os.unlink(tmp_path)
+                        except Exception as e:
+                            logging.error(f"Ошибка удаления временного файла: {str(e)}")
+                
+                # Обработка текста
+                blocks = page.get_text("blocks")
+                for block in blocks:
+                    if not block[4].strip():
+                        continue
+                        
+                    block_text = normalize_text(block[4].replace('\n', ' '))
+                    content_type = "text"
+                    
+                    if "рисунок" in block_text.lower() or "изображение" in block_text.lower():
+                        content_type = "image_caption"
+                    elif self.header_pattern.match(block_text):
+                        content_type = "header"
+                    elif self.subheader_pattern.match(block_text):
+                        content_type = "subheader"
+                    
+                    # Разбивка на предложения
+                    doc_text = self.nlp(block_text)
+                    for sent in doc_text.sents:
+                        if len(sent.text.strip()) > 10:
+                            chunks.append(self._create_chunk(
+                                sent.text, 
+                                file_id, 
+                                page_num,
+                                content_type,
+                                current_chapter,
+                                current_section
+                            ))
         
-        doc.close()
         return chunks
 
     def _process_docx(self, file_path, file_id):
@@ -212,13 +209,15 @@ class FileProcessor:
         return chunks
 
     def _create_chunk(self, text, file_id, page, content_type, chapter, section):
-        chunk_id = f"{file_id}_{page}_{self.chunk_counter}"
-        self.chunk_counter += 1
+        # Генерация числового ID из строки
+        original_id = f"{file_id}_{page}_{self.chunk_counter}"
+        chunk_id = abs(hash(original_id)) % (10**18)  # Преобразуем в большое число
         
         chunk = {
             "id": chunk_id,
             "text": text,
             "metadata": {
+                "original_id": original_id,  # Сохраняем оригинальный ID
                 "file_id": file_id,
                 "page": page,
                 "type": content_type,
@@ -227,14 +226,6 @@ class FileProcessor:
                 "source": os.path.basename(file_id)
             }
         }
-        
-        # Индексация
-        self.chunk_index[chunk_id] = chunk
-        if chapter:
-            self.header_index.setdefault(chapter, []).append(chunk_id)
-        if section:
-            self.section_index.setdefault(section, []).append(chunk_id)
-        
         return chunk
 
     def _register_headers(self, file_id, page, chapter, section):
