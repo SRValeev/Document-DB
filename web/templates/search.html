@@ -1,0 +1,22 @@
+<!-- web/templates/search.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Поиск по документам</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Поиск по документам</h1>
+        
+        <form action="/search" method="post" class="search-form">
+            <input type="text" name="query" placeholder="Введите ваш запрос..." required>
+            <button type="submit" class="btn btn-primary">Найти</button>
+        </form>
+        
+        <a href="/" class="btn">На главную</a>
+    </div>
+</body>
+</html>

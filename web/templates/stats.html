@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Детальная статистика</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Детальная статистика базы данных</h1>
+        
+        <div class="stats-grid">
+            <!-- Общая статистика -->
+            <div class="stat-card">
+                <h3>Общая статистика</h3>
+                <p>Документов: <strong>{{ documents|length }}</strong></p>
+                <p>Фрагментов: <strong>{{ size_stats.total }}</strong></p>
+                <p>Первый документ: <strong>{{ time_stats.first }}</strong></p>
+                <p>Последний документ: <strong>{{ time_stats.last }}</strong></p>
+            </div>
+            
+            <!-- Статистика по размерам -->
+            <div class="stat-card">
+                <h3>Размеры фрагментов</h3>
+                <p>Средний: <strong>{{ size_stats.avg }} симв.</strong></p>
+                <p>Минимальный: <strong>{{ size_stats.min }} симв.</strong></p>
+                <p>Максимальный: <strong>{{ size_stats.max }} симв.</strong></p>
+                <p>Медиана: <strong>{{ size_stats.percentiles.50 }} симв.</strong></p>
+            </div>
+            
+            <!-- Статистика по типам -->
+            <div class="stat-card">
+                <h3>Типы контента</h3>
+                <ul class="type-list">
+                    {% for type, count in type_stats.items() %}
+                    <li>{{ type }}: <strong>{{ count }}</strong></li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        
+        <!-- График распределения размеров -->
+        <div class="chart-container">
+            <h2>Распределение размеров фрагментов</h2>
+            <canvas id="sizeChart"></canvas>
+        </div>
+        
+        <!-- Таблица документов -->
+        <h2>Документы в базе</h2>
+        <table class="documents-table">
+            <thead>
+                <tr>
+                    <th>Название</th>
+                    <th>Фрагментов</th>
+                    <th>Размер (KB)</th>
+                    <th>Страниц</th>
+                    <th>Типы</th>
+                    <th>Добавлен</th>
+                    <th>Обновлен</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for doc in documents %}
+                <tr>
+                    <td>{{ doc.name }}</td>
+                    <td>{{ doc.chunks }}</td>
+                    <td>{{ "%.2f"|format(doc.size_kb) }}</td>
+                    <td>{{ doc.pages }}</td>
+                    <td>{{ doc.types|join(', ') }}</td>
+                    <td>{{ doc.first_seen }}</td>
+                    <td>{{ doc.last_seen }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        
+        <a href="/" class="btn">На главную</a>
+    </div>
+
+    <script>
+        // График распределения размеров
+        document.addEventListener('DOMContentLoaded', function() {
+            const ctx = document.getElementById('sizeChart').getContext('2d');
+            
+            // Преобразуем данные из шаблона в JavaScript
+            const sizeData = JSON.parse('{{ size_stats.histogram.data|tojson|safe }}');
+            const sizeLabels = JSON.parse('{{ size_stats.histogram.labels|tojson|safe }}');
+            
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: sizeLabels,
+                    datasets: [{
+                        label: 'Количество фрагментов',
+                        data: sizeData,
+                        backgroundColor: 'rgba(74, 111, 165, 0.7)',
+                        borderColor: 'rgba(74, 111, 165, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Количество фрагментов'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Диапазон размеров (символов)'
+                            }
+                        }
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>

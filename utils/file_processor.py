@@ -7,6 +7,7 @@ import camelot
 import logging
 import tempfile
 import uuid
+from datetime import datetime
 from docx import Document
 from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
@@ -208,24 +209,29 @@ class FileProcessor:
         
         return chunks
 
+# In file_processor.py, update the _create_chunk method:
+
     def _create_chunk(self, text, file_id, page, content_type, chapter, section):
         # Генерация числового ID из строки
         original_id = f"{file_id}_{page}_{self.chunk_counter}"
-        chunk_id = abs(hash(original_id)) % (10**18)  # Преобразуем в большое число
+        chunk_id = abs(hash(original_id)) % (10**18)  # Fixed missing parenthesis
         
         chunk = {
             "id": chunk_id,
             "text": text,
             "metadata": {
-                "original_id": original_id,  # Сохраняем оригинальный ID
+                "original_id": original_id,
                 "file_id": file_id,
                 "page": page,
                 "type": content_type,
                 "chapter": chapter,
                 "section": section,
-                "source": os.path.basename(file_id)
+                "source": os.path.basename(file_id),
+                "processing_date": datetime.now().strftime('%Y-%m-%d'),
+                "text_length": len(text)
             }
         }
+        self.chunk_counter += 1
         return chunk
 
     def _register_headers(self, file_id, page, chapter, section):

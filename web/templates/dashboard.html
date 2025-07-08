@@ -1,0 +1,55 @@
+<!-- web/templates/dashboard.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Векторная БД - Панель управления</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Панель управления векторной БД</h1>
+        
+        <div class="status-cards">
+            <div class="card">
+                <h3>Статус Qdrant</h3>
+                <p>Коллекция: <strong>{{ collection_info.name }}</strong></p>
+                <p>Всего векторов: <strong>{{ total_chunks }}</strong></p>
+                <p>Статус: <span class="status-active">Активен</span></p>
+            </div>
+            
+            <div class="card">
+                <h3>Документы</h3>
+                <p>Всего документов: <strong>{{ documents_count }}</strong></p>
+                <p>Всего фрагментов: <strong>{{ total_chunks }}</strong></p>
+            </div>
+        </div>
+        
+        <h2>Последние документы</h2>
+        <table class="documents-table">
+            <thead>
+                <tr>
+                    <th>Название</th>
+                    <th>Фрагментов</th>
+                    <th>Размер</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for doc in documents[:5] %}
+                <tr>
+                    <td>{{ doc.name }}</td>
+                    <td>{{ doc.chunks }}</td>
+                    <td>{{ (doc.size / 1024)|round(2) }} KB</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        
+        <div class="actions">
+            <a href="/documents" class="btn">Управление документами</a>
+            <a href="/search" class="btn btn-primary">Поиск</a>
+        </div>
+    </div>
+</body>
+</html>

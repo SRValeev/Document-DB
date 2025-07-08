@@ -1,0 +1,43 @@
+/* Добавить в web/static/css/style.css */
+
+.stats-section {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 30px;
+}
+
+.chart-container {
+    position: relative;
+    height: 400px;
+    margin-bottom: 20px;
+}
+
+.size-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 5px;
+}
+
+.size-stats p {
+    margin: 5px 0;
+}
+
+.type-stats {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.type-stats li {
+    padding: 5px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.type-stats li:last-child {
+    border-bottom: none;
+}

@@ -1,0 +1,48 @@
+<!-- web/templates/documents.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Управление документами</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Управление документами</h1>
+        
+        <form action="/documents/upload" method="post" enctype="multipart/form-data" class="upload-form">
+            <h3>Загрузить новые документы</h3>
+            <input type="file" name="files" multiple accept=".pdf,.doc,.docx">
+            <button type="submit" class="btn btn-primary">Загрузить</button>
+        </form>
+        
+        <h2>Документы в базе</h2>
+        <table class="documents-table">
+            <thead>
+                <tr>
+                    <th>Название</th>
+                    <th>Фрагментов</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for doc in documents %}
+                <tr>
+                    <td>{{ doc.name }}</td>
+                    <td>{{ doc.chunks }}</td>
+                    <td>
+                        <form action="/documents/delete" method="post" style="display: inline;">
+                            <input type="hidden" name="file_id" value="{{ doc.id }}">
+                            <button type="submit" class="btn btn-danger">Удалить</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        
+        <a href="/" class="btn">На главную</a>
+    </div>
+</body>
+</html>
