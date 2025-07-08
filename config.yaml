@@ -4,6 +4,7 @@ processing:
   embedding_model: "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
   spacy_model: "ru_core_news_md"
   min_similarity: 0.65
+  num_workers: 4  # Количество потоков для обработки
 
 qdrant:
   host: "localhost"

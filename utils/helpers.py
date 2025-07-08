@@ -7,7 +7,7 @@ import platform
 def windows_path(path):
     """Конвертирует путь в Windows-формат"""
     if platform.system() == 'Windows':
-        return path.replace('/', '\\')
+        return os.path.normpath(path)
     return path
 
 def setup_logging(log_file):

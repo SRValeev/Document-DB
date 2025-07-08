@@ -15,7 +15,7 @@ def main():
         port=config['qdrant']['port']
     )
     
-    # Создание коллекции (если не существует)
+    # Создание коллекции
     try:
         client.create_collection(
             collection_name=config['qdrant']['collection_name'],
@@ -24,12 +24,11 @@ def main():
                 distance=Distance.COSINE
             )
         )
-    except:
-        pass  # Коллекция уже существует
+    except Exception as e:
+        print(f"Коллекция уже существует или ошибка: {str(e)}")
     
-    # Загрузка всех обработанных файлов
+    # Загрузка чанков
     points = []
-    chunk_id = 1
     for file in os.listdir(processed_dir):
         if file.endswith('.json') and file != 'global_index.json':
             file_path = os.path.join(processed_dir, file)
@@ -38,16 +37,15 @@ def main():
                 for chunk in chunks:
                     if 'embedding' in chunk:
                         points.append(PointStruct(
-                            id=chunk_id,
+                            id=chunk['id'],  # Используем ID из индекса
                             vector=chunk['embedding'],
                             payload={
                                 "text": chunk['text'],
                                 "metadata": chunk['metadata']
                             }
                         ))
-                        chunk_id += 1
     
-    # Пакетная загрузка в Qdrant
+    # Пакетная загрузка
     batch_size = 100
     for i in tqdm(range(0, len(points), batch_size), desc="Загрузка в Qdrant"):
         batch = points[i:i+batch_size]
