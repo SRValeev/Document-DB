@@ -1,11 +1,12 @@
+# helpers.py
 import os
 import re
 import yaml
 import logging
 import platform
+import uuid
 
 def windows_path(path):
-    """Конвертирует путь в Windows-формат"""
     if platform.system() == 'Windows':
         return os.path.normpath(path)
     return path
@@ -25,7 +26,6 @@ def load_config(config_path="config.yaml"):
         return yaml.safe_load(f)
 
 def normalize_text(text):
-    # Удаление лишних пробелов и спецсимволов
     text = re.sub(r'\s+', ' ', text)
     text = re.sub(r'[^\w\s.,:;!?()\-—–/]', '', text)
     return text.strip()
@@ -34,3 +34,6 @@ def create_dir(path):
     path = windows_path(path)
     if not os.path.exists(path):
         os.makedirs(path)
+
+def generate_unique_id():
+    return str(uuid.uuid4())

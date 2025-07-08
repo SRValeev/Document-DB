@@ -1,6 +1,7 @@
+# query.py (обновленная версия)
 import json
 from qdrant_client import QdrantClient
-from qdrant_client.models import Filter, PointStruct
+from qdrant_client.models import Filter
 from sentence_transformers import SentenceTransformer
 from utils.helpers import load_config, normalize_text
 
@@ -18,39 +19,41 @@ class RAGSystem:
         self.min_score = self.config['processing']['min_similarity']
     
     def search(self, query, top_k=5):
-        """Обновленный метод поиска с использованием query_points"""
         try:
             # Векторизация запроса
             query_embedding = self.embedding_model.encode([normalize_text(query)])[0].tolist()
             
-            # Используем новый API query_points
-            results = self.client.query_points(
+            results = self.client.search(
                 collection_name=self.config['qdrant']['collection_name'],
                 query_vector=query_embedding,
                 limit=top_k,
                 with_payload=True,
-                with_vectors=False,
                 score_threshold=self.min_score
             )
             
             if not results:
                 return "По вашему запросу ничего не найдено."
             
-            # Форматирование результатов
             output = []
             for idx, result in enumerate(results, 1):
-                if not hasattr(result, 'payload') or 'text' not in result.payload:
-                    continue
-                
                 payload = result.payload
                 metadata = payload.get('metadata', {})
+                
+                # Формируем контекст с заголовками
+                context = ""
+                if metadata.get('chapter'):
+                    context += f"Раздел: {metadata['chapter']}\n"
+                if metadata.get('section'):
+                    context += f"Подраздел: {metadata['section']}\n"
+                
+                context += f"Текст: {payload['text']}"
                 
                 output.append(
                     f"Результат #{idx}\n"
                     f"📄 Источник: {metadata.get('source', 'неизвестно')}\n"
                     f"📖 Страница: {metadata.get('page', 'N/A')}\n"
                     f"🔍 Сходство: {result.score:.4f}\n\n"
-                    f"📝 Контекст:\n{payload['text']}\n"
+                    f"📝 Контекст:\n{context}\n"
                     f"{'='*50}"
                 )
             

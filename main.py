@@ -1,17 +1,22 @@
+# main.py
 import os
 import asyncio
-from fastapi import FastAPI, Request, HTTPException, Form
+import shutil
+import uuid
+from fastapi import FastAPI, Request, HTTPException, Form, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, JSONResponse
 from qdrant_client import QdrantClient
-from qdrant_client.models import VectorParams, Distance, PointIdsList
-from utils.helpers import load_config
+from qdrant_client.models import VectorParams, Distance, PointIdsList, Filter, FieldCondition, MatchValue
+from utils.helpers import load_config, generate_unique_id
 from datetime import datetime
 import pandas as pd
 from collections import defaultdict
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Annotated
 from sentence_transformers import SentenceTransformer
+from pathlib import Path
+import logging
 
 app = FastAPI()
 config = load_config()
@@ -27,6 +32,145 @@ qdrant_client = QdrantClient(
     timeout=10
 )
 embedding_model = SentenceTransformer(config['processing']['embedding_model'])
+
+@app.on_event("startup")
+async def startup_event():
+    try:
+        qdrant_client.get_collection(config['qdrant']['collection_name'])
+    except Exception:
+        qdrant_client.recreate_collection(
+            collection_name=config['qdrant']['collection_name'],
+            vectors_config=VectorParams(
+                size=config['qdrant']['vector_size'],
+                distance=Distance.COSINE
+            )
+        )
+
+# Загрузка файлов
+@app.post("/upload")
+async def upload_files(files: Annotated[List[UploadFile], File(...)]):
+    try:
+        saved_files = []
+        data_dir = config['paths']['data_dir']
+        
+        for file in files:
+            # Генерируем уникальное имя файла
+            file_ext = Path(file.filename).suffix
+            new_filename = f"{generate_unique_id()}{file_ext}"
+            file_path = os.path.join(data_dir, new_filename)
+            
+            with open(file_path, "wb") as f:
+                shutil.copyfileobj(file.file, f)
+            
+            saved_files.append(new_filename)
+        
+        # Запускаем обработку в фоне
+        asyncio.create_task(process_and_ingest_files())
+        
+        return JSONResponse(
+            status_code=200,
+            content={"message": f"Файлы успешно загружены: {', '.join(saved_files)}"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка загрузки: {str(e)}")
+
+async def process_and_ingest_files():
+    from process import main as process_main
+    from ingest import main as ingest_main
+    
+    processed_files = process_main()
+    loaded_chunks = ingest_main()
+    
+    logging.info(f"Обработано файлов: {processed_files}, Загружено чанков: {loaded_chunks}")
+
+# Удаление документов (обновленная версия)
+@app.post("/documents/delete")
+async def delete_document(request: Request, file_id: str = Form(...)):
+    try:
+        # Фильтр для поиска точек по file_id
+        filter_ = Filter(
+            must=[
+                FieldCondition(
+                    key="metadata.file_id",
+                    match=MatchValue(value=file_id)
+                )
+            ]
+        )
+        
+        # Находим все точки для удаления
+        points = []
+        next_offset = None
+        while True:
+            records, next_offset = qdrant_client.scroll(
+                collection_name=config['qdrant']['collection_name'],
+                scroll_filter=filter_,
+                limit=100,
+                offset=next_offset,
+                with_payload=False
+            )
+            if not records:
+                break
+            points.extend([record.id for record in records])
+            if next_offset is None:
+                break
+        
+        if points:
+            qdrant_client.delete(
+                collection_name=config['qdrant']['collection_name'],
+                points_selector=PointIdsList(points=points)
+            )
+        
+        # Удаляем файл из data_dir
+        data_dir = config['paths']['data_dir']
+        for filename in os.listdir(data_dir):
+            if file_id in filename:
+                os.remove(os.path.join(data_dir, filename))
+                break
+        
+        return RedirectResponse("/documents", status_code=303)
+    except Exception as e:
+        return templates.TemplateResponse(
+            "error.html",
+            {
+                "request": request,
+                "error": f"Ошибка удаления документа: {str(e)}"
+            },
+            status_code=500
+        )
+
+# Очистка всей базы данных
+@app.post("/purge")
+async def purge_database():
+    try:
+        # Удаляем коллекцию
+        qdrant_client.delete_collection(config['qdrant']['collection_name'])
+        
+        # Пересоздаем пустую коллекцию
+        qdrant_client.recreate_collection(
+            collection_name=config['qdrant']['collection_name'],
+            vectors_config=VectorParams(
+                size=config['qdrant']['vector_size'],
+                distance=Distance.COSINE
+            )
+        )
+        
+        # Очищаем директории
+        data_dir = config['paths']['data_dir']
+        processed_dir = config['paths']['output_dir']
+        
+        for dir_path in [data_dir, processed_dir]:
+            for filename in os.listdir(dir_path):
+                file_path = os.path.join(dir_path, filename)
+                if os.path.isfile(file_path):
+                    os.unlink(file_path)
+        
+        return JSONResponse(
+            status_code=200,
+            content={"message": "База данных успешно очищена"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 async def get_collection_info() -> Dict:
     """Получение информации о коллекции"""
@@ -151,19 +295,6 @@ async def process_documents() -> Dict:
         "loaded_chunks": loaded_chunks
     }
 
-@app.on_event("startup")
-async def startup_event():
-    """Инициализация при запуске"""
-    try:
-        qdrant_client.get_collection(config['qdrant']['collection_name'])
-    except Exception:
-        qdrant_client.recreate_collection(
-            collection_name=config['qdrant']['collection_name'],
-            vectors_config=VectorParams(
-                size=config['qdrant']['vector_size'],
-                distance=Distance.COSINE
-            )
-        )
 
 @app.get("/")
 async def dashboard(request: Request):
@@ -213,38 +344,6 @@ async def documents_page(request: Request):
             {
                 "request": request,
                 "error": f"Ошибка получения документов: {str(e)}"
-            },
-            status_code=500
-        )
-
-@app.post("/documents/delete")
-async def delete_document(request: Request, file_id: str = Form(...)):
-    """Удаление документа"""
-    try:
-        # Находим точки для удаления
-        points = []
-        records, _ = qdrant_client.scroll(
-            collection_name=config['qdrant']['collection_name'],
-            with_payload=True
-        )
-        
-        for record in records:
-            if record.payload.get('metadata', {}).get('file_id') == file_id:
-                points.append(record.id)
-        
-        if points:
-            qdrant_client.delete(
-                collection_name=config['qdrant']['collection_name'],
-                points_selector=PointIdsList(points=points)
-            )
-        
-        return RedirectResponse("/documents", status_code=303)
-    except Exception as e:
-        return templates.TemplateResponse(
-            "error.html",
-            {
-                "request": request,
-                "error": f"Ошибка удаления документа: {str(e)}"
             },
             status_code=500
         )

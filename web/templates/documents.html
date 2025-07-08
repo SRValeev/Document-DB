@@ -11,10 +11,11 @@
     <div class="container">
         <h1>Управление документами</h1>
         
-        <form action="/documents/upload" method="post" enctype="multipart/form-data" class="upload-form">
-            <h3>Загрузить новые документы</h3>
-            <input type="file" name="files" multiple accept=".pdf,.doc,.docx">
-            <button type="submit" class="btn btn-primary">Загрузить</button>
+        <form action="/upload" method="post" enctype="multipart/form-data" id="uploadForm">
+            <div class="input-group">
+                <input type="file" class="form-control" name="files" multiple required>
+                <button type="submit" class="btn btn-primary">Загрузить файлы</button>
+            </div>
         </form>
         
         <h2>Документы в базе</h2>
@@ -42,7 +43,21 @@
             </tbody>
         </table>
         
-        <a href="/" class="btn">На главную</a>
+        <div class="actions">
+            <a href="/" class="btn btn-primary">На главную</a>
+            <button class="btn btn-danger" onclick="purgeDatabase()">Очистить всю базу данных</button>
+        </div>
     </div>
+
 </body>
 </html>
+<script>
+async function purgeDatabase() {
+    if (confirm("Вы уверены, что хотите полностью очистить базу данных? Это действие нельзя отменить.")) {
+        const response = await fetch('/purge', { method: 'POST' });
+        const result = await response.json();
+        alert(result.message);
+        location.reload();
+    }
+}
+</script>

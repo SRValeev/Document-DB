@@ -1,3 +1,4 @@
+# ingest.py
 import os
 import json
 from tqdm import tqdm
@@ -6,7 +7,6 @@ from qdrant_client.models import PointStruct, VectorParams, Distance
 from utils.helpers import load_config
 
 def main() -> int:
-    """Основная функция загрузки данных в Qdrant"""
     config = load_config()
     processed_dir = config['paths']['output_dir']
     
@@ -18,15 +18,17 @@ def main() -> int:
         )
         
         # Создаем коллекцию (если не существует)
-        client.recreate_collection(
-            collection_name=config['qdrant']['collection_name'],
-            vectors_config=VectorParams(
-                size=config['qdrant']['vector_size'],
-                distance=Distance.COSINE
+        try:
+            client.get_collection(config['qdrant']['collection_name'])
+        except:
+            client.recreate_collection(
+                collection_name=config['qdrant']['collection_name'],
+                vectors_config=VectorParams(
+                    size=config['qdrant']['vector_size'],
+                    distance=Distance.COSINE
+                )
             )
-        )
         
-        # Сбор всех чанков для загрузки
         points = []
         for file in os.listdir(processed_dir):
             if file.endswith('.json') and file != 'global_index.json':
@@ -49,7 +51,7 @@ def main() -> int:
             return 0
         
         # Пакетная загрузка
-        batch_size = 50
+        batch_size = 100
         success_count = 0
         
         for i in tqdm(range(0, len(points), batch_size), desc="Загрузка в Qdrant"):

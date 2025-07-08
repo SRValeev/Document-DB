@@ -1,3 +1,4 @@
+# file_processor.py
 import os
 import re
 import json
@@ -7,11 +8,14 @@ import camelot
 import logging
 import tempfile
 import uuid
+import pytesseract
+from PIL import Image
+from io import BytesIO
 from datetime import datetime
 from docx import Document
 from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
-from .helpers import load_config, normalize_text, windows_path
+from .helpers import load_config, normalize_text, windows_path, generate_unique_id
 
 class FileProcessor:
     def __init__(self, config):
@@ -29,18 +33,19 @@ class FileProcessor:
         self.file_index = {}
         self.min_similarity = config['processing']['min_similarity']
         self.temp_dir = config['paths']['tempdir']
+        self.use_ocr = config['processing'].get('use_ocr', False)
+        self.images_dir = config['paths']['images_dir']
         
-        # Создаем каталоги
         os.makedirs(self.temp_dir, exist_ok=True)
+        os.makedirs(self.images_dir, exist_ok=True)
         
-        # Системы индексов
         self.chunk_index = {}
         self.header_index = {}
         self.section_index = {}
         self.chunk_counter = 1
 
     def process_file(self, file_path):
-        file_id = os.path.basename(file_path)
+        file_id = generate_unique_id()
         self.file_index[file_id] = windows_path(file_path)
         
         if file_path.lower().endswith('.pdf'):
@@ -55,7 +60,6 @@ class FileProcessor:
         current_chapter = ""
         current_section = ""
         
-        # Используем контекстный менеджер для PDF документа
         with fitz.open(file_path) as doc:
             try:
                 toc = doc.get_toc()
@@ -77,76 +81,83 @@ class FileProcessor:
                 
                 self._register_headers(file_id, page_num, current_chapter, current_section)
                 
-                # Обработка таблиц с использованием временного файла
-                tmp_path = None
-                try:
-                    # Создаем временный файл
-                    with tempfile.NamedTemporaryFile(
-                        dir=self.temp_dir, 
-                        suffix=".pdf", 
-                        delete=False
-                    ) as tmp:
-                        tmp_path = tmp.name
-                    
-                    # Сохраняем только текущую страницу
-                    with fitz.open() as single_page:
-                        single_page.insert_pdf(doc, from_page=page_num, to_page=page_num)
-                        single_page.save(tmp_path)
-                    
-                    tables = camelot.read_pdf(
-                        windows_path(tmp_path), 
-                        pages="1",
-                        flavor='lattice'
-                    )
-                    
-                    for i, table in enumerate(tables):
-                        table_text = f"ТАБЛИЦА {file_id}-{page_num+1}.{i+1}: {table.df.to_csv(sep='|', index=False)}"
-                        chunks.append(self._create_chunk(
-                            table_text, 
-                            file_id, 
-                            page_num,
-                            "table",
-                            current_chapter,
-                            current_section
-                        ))
-                except Exception as e:
-                    logging.error(f"Ошибка обработки таблиц: {str(e)}")
-                finally:
-                    # Гарантированное удаление временного файла
-                    if tmp_path and os.path.exists(tmp_path):
+                # Обработка изображений
+                if self.use_ocr:
+                    image_list = page.get_images(full=True)
+                    for img_index, img in enumerate(image_list, 1):
+                        xref = img[0]
+                        base_image = doc.extract_image(xref)
+                        image_bytes = base_image["image"]
+                        image = Image.open(BytesIO(image_bytes))
+                        
+                        # OCR обработка
                         try:
-                            os.unlink(tmp_path)
+                            ocr_text = pytesseract.image_to_string(image, lang='rus+eng')
+                            ocr_text = normalize_text(ocr_text)
+                            if ocr_text:
+                                chunks.append(self._create_chunk(
+                                    f"Изображение {img_index}: {ocr_text}",
+                                    file_id, 
+                                    page_num,
+                                    "image",
+                                    current_chapter,
+                                    current_section
+                                ))
                         except Exception as e:
-                            logging.error(f"Ошибка удаления временного файла: {str(e)}")
+                            logging.error(f"Ошибка OCR: {str(e)}")
                 
                 # Обработка текста
                 blocks = page.get_text("blocks")
+                page_text = ""
                 for block in blocks:
                     if not block[4].strip():
                         continue
-                        
                     block_text = normalize_text(block[4].replace('\n', ' '))
-                    content_type = "text"
-                    
-                    if "рисунок" in block_text.lower() or "изображение" in block_text.lower():
-                        content_type = "image_caption"
-                    elif self.header_pattern.match(block_text):
-                        content_type = "header"
-                    elif self.subheader_pattern.match(block_text):
-                        content_type = "subheader"
-                    
-                    # Разбивка на предложения
-                    doc_text = self.nlp(block_text)
-                    for sent in doc_text.sents:
-                        if len(sent.text.strip()) > 10:
-                            chunks.append(self._create_chunk(
-                                sent.text, 
-                                file_id, 
-                                page_num,
-                                content_type,
-                                current_chapter,
-                                current_section
-                            ))
+                    page_text += block_text + " "
+                
+                # Разбивка на чанки с учетом контекста
+                if page_text:
+                    chunks.extend(self._split_text_into_chunks(
+                        page_text, 
+                        file_id, 
+                        page_num,
+                        "text",
+                        current_chapter,
+                        current_section
+                    ))
+        
+        return chunks
+
+    def _split_text_into_chunks(self, text, file_id, page, content_type, chapter, section):
+        """Разбивает текст на чанки с учетом контекста"""
+        words = text.split()
+        chunk_size = self.config['processing']['chunk_size']
+        chunk_overlap = self.config['processing']['chunk_overlap']
+        chunks = []
+        
+        start = 0
+        while start < len(words):
+            end = min(start + chunk_size, len(words))
+            chunk_text = ' '.join(words[start:end])
+            
+            # Добавляем контекстные заголовки
+            context = ""
+            if chapter:
+                context += f"Раздел: {chapter}. "
+            if section:
+                context += f"Подраздел: {section}. "
+                
+            full_text = context + chunk_text
+            
+            chunks.append(self._create_chunk(
+                full_text, 
+                file_id, 
+                page,
+                content_type,
+                chapter,
+                section
+            ))
+            start += (chunk_size - chunk_overlap)
         
         return chunks
 
@@ -158,6 +169,7 @@ class FileProcessor:
         current_section = ""
         paragraph_count = 0
         
+        full_text = ""
         for para in doc.paragraphs:
             paragraph_count += 1
             if paragraph_count % 50 == 0:
@@ -178,19 +190,18 @@ class FileProcessor:
                 content_type = "subheader"
                 
             self._register_headers(file_id, current_page, current_chapter, current_section)
-            
-            # Разбивка на предложения
-            doc_text = self.nlp(text)
-            for sent in doc_text.sents:
-                if len(sent.text.strip()) > 10:
-                    chunks.append(self._create_chunk(
-                        sent.text, 
-                        file_id, 
-                        current_page,
-                        content_type,
-                        current_chapter,
-                        current_section
-                    ))
+            full_text += text + " "
+        
+        # Разбивка на чанки
+        if full_text:
+            chunks.extend(self._split_text_into_chunks(
+                full_text, 
+                file_id, 
+                current_page,
+                "text",
+                current_chapter,
+                current_section
+            ))
         
         # Обработка таблиц
         for table in doc.tables:
@@ -209,24 +220,19 @@ class FileProcessor:
         
         return chunks
 
-# In file_processor.py, update the _create_chunk method:
-
     def _create_chunk(self, text, file_id, page, content_type, chapter, section):
-        # Генерация числового ID из строки
-        original_id = f"{file_id}_{page}_{self.chunk_counter}"
-        chunk_id = abs(hash(original_id)) % (10**18)  # Fixed missing parenthesis
+        chunk_id = generate_unique_id()
         
         chunk = {
             "id": chunk_id,
             "text": text,
             "metadata": {
-                "original_id": original_id,
                 "file_id": file_id,
                 "page": page,
                 "type": content_type,
                 "chapter": chapter,
                 "section": section,
-                "source": os.path.basename(file_id),
+                "source": os.path.basename(self.file_index[file_id]),
                 "processing_date": datetime.now().strftime('%Y-%m-%d'),
                 "text_length": len(text)
             }
@@ -242,7 +248,7 @@ class FileProcessor:
         texts = [chunk['text'] for chunk in chunks]
         embeddings = []
         
-        batch_size = 32  # Уменьшено для экономии памяти
+        batch_size = 32
         for i in tqdm(range(0, len(texts), batch_size), desc="Векторизация"):
             batch = texts[i:i+batch_size]
             embeddings.extend(self.embedding_model.encode(batch))
@@ -258,8 +264,6 @@ class FileProcessor:
             json.dump(chunks, f, ensure_ascii=False, indent=2)
 
     def create_global_index(self, output_dir):
-        """Создает глобальные индексы для быстрого поиска"""
-        # Сохраняем индексы
         index_data = {
             "global_headers": self.global_headers,
             "file_index": self.file_index,
