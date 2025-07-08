@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Результаты поиска</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Результаты поиска</h1>
+        
+        <div class="search-query">
+            <p>По запросу: <strong>{{ query }}</strong></p>
+        </div>
+
+        {% if not results %}
+        <div class="no-results">
+            <p>По вашему запросу ничего не найдено.</p>
+        </div>
+        {% else %}
+        <div class="results-list">
+            {% for result in results %}
+            <div class="result-item">
+                <div class="result-header">
+                    <span class="result-score">Сходство: {{ "%.2f"|format(result.score) }}</span>
+                    <span class="result-source">Источник: {{ result.source }}</span>
+                    <span class="result-page">Страница: {{ result.page }}</span>
+                </div>
+                <div class="result-text">
+                    <p>{{ result.text }}</p>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="actions">
+            <a href="/search" class="btn">Новый поиск</a>
+            <a href="/" class="btn">На главную</a>
+        </div>
+    </div>
+</body>
+</html>

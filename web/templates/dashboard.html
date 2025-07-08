@@ -40,7 +40,7 @@
                 <tr>
                     <td>{{ doc.name }}</td>
                     <td>{{ doc.chunks }}</td>
-                    <td>{{ (doc.size / 1024)|round(2) }} KB</td>
+                    <td>{{ "%.2f KB" % doc.size_kb }} KB</td>
                 </tr>
                 {% endfor %}
             </tbody>
