@@ -4,6 +4,8 @@ import concurrent.futures
 from tqdm import tqdm
 from utils.file_processor import FileProcessor
 from utils.helpers import get_processed_files_list, add_to_processed_files
+from datetime import datetime
+import json
 
 def process_single_file(args):
     config, file_path = args
@@ -18,26 +20,43 @@ def process_single_file(args):
 def parallel_process(config):
     processor = FileProcessor(config)
     data_dir = config['paths']['data_dir']
-    processed_files_path = config['paths']['processed_files']
+    output_dir = config['paths']['output_dir']  # Используем output_dir вместо processed_files
     
-    # Получаем список уже обработанных файлов
-    processed_files = get_processed_files_list(processed_files_path)
+    # Создаем выходную директорию, если не существует
+    os.makedirs(output_dir, exist_ok=True)
     
-    # Сбор новых файлов
+    # Сбор всех файлов
     file_paths = []
     for root, _, files in os.walk(data_dir):
         for file in files:
-            file_path = os.path.join(root, file)
-            file_id = os.path.relpath(file_path, data_dir)
-            if file.lower().endswith(('.pdf', '.doc', '.docx')) and file_id not in processed_files:
-                file_paths.append(file_path)
+            if file.lower().endswith(('.pdf', '.doc', '.docx')):
+                file_paths.append(os.path.join(root, file))
     
+    # Многопоточная обработка
     results = {}
-    for file_path in tqdm(file_paths, desc="Обработка файлов"):
-        _, chunks = process_single_file(processor, file_path)
-        if chunks:  # Если файл успешно обработан
-            file_id = os.path.relpath(file_path, data_dir)
-            add_to_processed_files(processed_files_path, file_id)
+    num_workers = config['processing'].get('num_workers', 4)
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
+        futures = [
+            executor.submit(process_single_file, (config, fp)) 
+            for fp in file_paths
+        ]
+        
+        for future in tqdm(
+            concurrent.futures.as_completed(futures), 
+            total=len(futures), 
+            desc="Параллельная обработка"
+        ):
+            file_path, chunks = future.result()
             results[file_path] = chunks
+    
+    # Сохраняем информацию о processed files
+    processed_info = {
+        "files": list(results.keys()),
+        "timestamp": datetime.now().isoformat()
+    }
+    
+    with open(os.path.join(output_dir, "processing_info.json"), 'w') as f:
+        json.dump(processed_info, f)
     
     return results

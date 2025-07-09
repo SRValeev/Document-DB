@@ -21,32 +21,14 @@ from .helpers import load_config, normalize_text, windows_path, generate_unique_
 class FileProcessor:
     def __init__(self, config):
         self.config = config
-        self.perf_config = config.get('performance', {})
+        self.nlp = spacy.load(config['processing']['spacy_model'])
         
-        try:
-            self.nlp = spacy.load(config['processing']['spacy_model'])
-        except Exception as e:
-            logging.error(f"Ошибка загрузки модели Spacy: {str(e)}")
-            self.nlp = None
+        # Инициализация модели эмбеддингов (как было в рабочей версии)
+        self.embedding_model = SentenceTransformer(
+            config['processing']['embedding_model']
+        )
         
-        # Настройки производительности
-        device = self.perf_config.get('device', 'cpu')
-        low_memory = self.perf_config.get('low_memory_mode', True)
-        
-        try:
-            self.embedding_model = SentenceTransformer(
-                config['processing']['embedding_model'],
-                device=device
-            )
-            
-            # Оптимизации для режима экономии памяти
-            if low_memory:
-                self.embedding_model.max_seq_length = 128
-                self.embedding_model._first_module().max_seq_length = 128
-        except Exception as e:
-            logging.error(f"Ошибка загрузки модели эмбеддингов: {str(e)}")
-            self.embedding_model = None
-
+        # Все оригинальные параметры из рабочей версии
         self.header_pattern = re.compile(
             r'^(Глава|Раздел|Часть|Параграф)\s+\d+[.:]?\s+', 
             re.IGNORECASE
@@ -66,6 +48,19 @@ class FileProcessor:
         self.header_index = {}
         self.section_index = {}
         self.chunk_counter = 1
+
+    def _init_embedding_model(self):
+        """Безопасная инициализация модели эмбеддингов"""
+        try:
+            model_cfg = self.config['processing']['embedding_model']
+            self.embedding_model = SentenceTransformer(
+                model_cfg['name'],
+                device=model_cfg.get('device', 'cpu')
+            )
+            logging.info(f"Модель эмбеддингов загружена на {model_cfg.get('device', 'cpu')}")
+        except Exception as e:
+            logging.error(f"Ошибка загрузки модели: {str(e)}")
+            raise RuntimeError("Не удалось инициализировать модель эмбеддингов")
 
     def process_file(self, file_path):
         if not self.nlp or not self.embedding_model:
@@ -250,19 +245,18 @@ class FileProcessor:
         
         return chunks
 
-    def _create_chunk(self, text, file_id, page, content_type, chapter, section):
-        chunk_id = generate_unique_id()
-        
+    def _create_chunk(self, text, file_path, page, content_type, chapter, section):
+        chunk_id = str(uuid.uuid4())
         chunk = {
             "id": chunk_id,
             "text": text,
             "metadata": {
-                "file_id": file_id,
+                "file_id": file_path,
                 "page": page,
                 "type": content_type,
                 "chapter": chapter,
                 "section": section,
-                "source": os.path.basename(self.file_index[file_id]),
+                "source": os.path.basename(file_path),
                 "processing_date": datetime.now().strftime('%Y-%m-%d'),
                 "text_length": len(text)
             }
@@ -275,29 +269,14 @@ class FileProcessor:
         self.global_headers[key] = chapter or section
 
     def vectorize_chunks(self, chunks):
-        if not chunks or not self.embedding_model:
-            return chunks
-            
+        """Оригинальный метод векторизации"""
         texts = [chunk['text'] for chunk in chunks]
         embeddings = []
         
-        # Используем настройки производительности из конфига
-        batch_size = self.perf_config.get('embedding_batch_size', 8)
-        
+        batch_size = 32
         for i in tqdm(range(0, len(texts), batch_size), desc="Векторизация"):
             batch = texts[i:i+batch_size]
-            try:
-                batch_embeddings = self.embedding_model.encode(
-                    batch,
-                    batch_size=batch_size,
-                    convert_to_numpy=True,
-                    show_progress_bar=False
-                )
-                embeddings.extend(batch_embeddings)
-            except Exception as e:
-                logging.error(f"Ошибка векторизации: {str(e)}")
-                # Добавляем нулевые эмбеддинги в случае ошибки
-                embeddings.extend([np.zeros(self.config['qdrant']['vector_size'])] * len(batch))
+            embeddings.extend(self.embedding_model.encode(batch))
         
         for i, chunk in enumerate(chunks):
             chunk['embedding'] = embeddings[i].tolist()

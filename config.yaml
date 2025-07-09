@@ -1,17 +1,14 @@
-processing:
-  chunk_size: 512
-  chunk_overlap: 50
+processing: 
+  chunk_size: 768  # Размер фрагмента текста в символах максимальный для модели paraphrase-multilingual-mpnet-base-v2
+  chunk_overlap: 200  # Перекрытие между фрагментами для сохранения контекста
   embedding_model: "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+  # embedding_model: "intfloat/multilingual-e5-large"  # Более тяжелая и точная может chunk_size 1024
   spacy_model: "ru_core_news_md"
+  device: "cpu"
   min_similarity: 0.70
-  num_workers: 2  # Уменьшено для экономии памяти
+  num_workers: 4  # Уменьшено для экономии памяти
   use_ocr: false  # По умолчанию выключено
   tesseract_path: ""  # Путь к Tesseract OCR
-
-paths:
-  data_dir: "data"
-  output_dir: "processed"
-  processed_files: "processed/processed_files.txt"  # Файл для хранения списка обработанных документов
 
 # Настройки производительности
 performance:
@@ -19,25 +16,39 @@ performance:
   qdrant_batch_size: 50    # Размер батча для загрузки в Qdrant
   max_threads: 2           # Максимальное число потоков
   device: "cpu"            # Устройство для обработки (cpu/cuda)
-  low_memory_mode: true    # Режим экономии памяти
-
-# Пресет для слабых систем (раскомментировать при необходимости)
-# performance:
-#   embedding_batch_size: 4
-#   qdrant_batch_size: 20
-#   max_threads: 1
-#   device: "cpu"
-#   low_memory_mode: true
 
 qdrant:
   host: "localhost"
   port: 6333
   collection_name: "document_chunks"
   vector_size: 768
+  search_params:
+    limit: 5  # Количество возвращаемых результатов поиска
+    with_payload: true  # Включать ли метаданные в результаты
+    with_vectors: false  # Включать ли сами векторы в результаты
+    score_threshold: 0.7  # Минимальный порог схожести (0-1)
 
 paths:
   data_dir: "data"
   output_dir: "processed"
   images_dir: "processed/images"
+  processed_files: "processed/processed_files.json"
   log_file: "processing.log"
   tempdir: "temp"
+
+llm:
+  api_url: "http://localhost:1234/v1"  # URL LM Studio API
+  model: "google/gemma-3-4b"  # Название модели в LM Studio
+  context_window: 8000
+  
+  generation_params:
+    temperature: 0.3  # Контроль случайности (меньше = более предсказуемо)
+    max_tokens: 1000  # Максимальная длина ответа в токенах
+    top_p: 0.9  # Ограничение на кумулятивную вероятность (0.9 - хороший баланс)
+    frequency_penalty: 0.2  # Штраф за частые слова (0-1)
+    presence_penalty: 0.2  # Штраф за повторения (0-1)
+
+  system_prompt: |
+    Ты - помощник для работы с документами. Отвечай на вопросы, используя предоставленный контекст.
+    Будь точным и лаконичным. Если ответа нет в контексте, скажи об этом.
+    Отвечай на языке вопроса.

@@ -1,50 +1,58 @@
 import os
-import logging
+import shutil
+from typing import Dict, List
 from tqdm import tqdm
-from utils.helpers import setup_logging, load_config, create_dir
 from parallel_processor import parallel_process
+from utils.file_processor import FileProcessor
+from utils.helpers import load_config, setup_logging
 
-def main() -> int:
+def clear_data_directory(data_dir: str):
+    """Очищает каталог data после обработки"""
+    try:
+        for filename in os.listdir(data_dir):
+            file_path = os.path.join(data_dir, filename)
+            try:
+                if os.path.isfile(file_path) or os.path.islink(file_path):
+                    os.unlink(file_path)
+                elif os.path.isdir(file_path):
+                    shutil.rmtree(file_path)
+            except Exception as e:
+                print(f'Не удалось удалить {file_path}. Причина: {e}')
+    except Exception as e:
+        print(f'Ошибка при очистке каталога data: {e}')
+
+def main() -> Dict[str, List[str]]:
+    """Основная функция обработки документов"""
     config = load_config()
-    setup_logging(config.get('paths', {}).get('log_file', ''))
+    setup_logging(config['paths']['log_file'])
+    output_dir = config['paths']['output_dir']
+    data_dir = config['paths']['data_dir']
     
-    # Создаем все необходимые директории
-    for dir_key in ['output_dir', 'images_dir', 'tempdir']:
-        create_dir(config['paths'].get(dir_key, ''))
-    
-    # Создаем файл для отслеживания обработанных документов
-    processed_files_path = config['paths'].get('processed_files', '')
-    if processed_files_path:
-        create_dir(os.path.dirname(processed_files_path))
-        if not os.path.exists(processed_files_path):
-            open(processed_files_path, 'w').close()
-    
-    output_dir = config.get('paths', {}).get('output_dir', 'processed')
-    create_dir(output_dir)  # Гарантируем создание директории
+    os.makedirs(output_dir, exist_ok=True)
     
     # Параллельная обработка файлов
     all_chunks = parallel_process(config)
     
-    # Сохранение результатов
-    from utils.file_processor import FileProcessor
+    # Инициализация процессора файлов
     processor = FileProcessor(config)
+    processed_files = []
     
-    for file_path, chunks in all_chunks.items():
+    # Сохранение результатов
+    for file_path, chunks in tqdm(all_chunks.items(), desc="Сохранение чанков"):
         output_file = os.path.join(
             output_dir, 
             f"{os.path.splitext(os.path.basename(file_path))[0]}.json"
         )
         processor.save_chunks(chunks, output_file)
+        processed_files.append(file_path)
     
     # Создание глобального индекса
     processor.create_global_index(output_dir)
     
-    return len(all_chunks)  # Возвращаем количество обработанных файлов
-
-if __name__ == "__main__":
-    try:
-        processed_files = main()
-        print(f"Успешно обработано {processed_files} файлов")
-    except Exception as e:
-        logging.error(f"Ошибка обработки документов: {str(e)}")
-        raise
+    # Очистка каталога data после успешной обработки
+    clear_data_directory(data_dir)
+    
+    return {
+        "processed_files": processed_files,
+        "total_chunks": sum(len(chunks) for chunks in all_chunks.values())
+    }

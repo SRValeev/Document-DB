@@ -3,7 +3,7 @@ import os
 import asyncio
 import shutil
 import uuid
-from fastapi import FastAPI, Request, HTTPException, Form, UploadFile, File
+from fastapi import FastAPI, Request, HTTPException, Form, UploadFile, File, Body
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse, JSONResponse
@@ -17,6 +17,8 @@ from typing import Dict, List, Optional, Annotated
 from sentence_transformers import SentenceTransformer
 from pathlib import Path
 import logging
+from llm_client import llm_client
+from fastapi.responses import HTMLResponse
 
 app = FastAPI()
 config = load_config()
@@ -32,6 +34,9 @@ qdrant_client = QdrantClient(
     timeout=10
 )
 embedding_model = SentenceTransformer(config['processing']['embedding_model'])
+
+
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -74,14 +79,31 @@ async def upload_files(files: Annotated[List[UploadFile], File(...)]):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка загрузки: {str(e)}")
 
-async def process_and_ingest_files():
+async def process_and_ingest_files() -> Dict:
+    """Запуск обработки документов"""
     from process import main as process_main
     from ingest import main as ingest_main
     
-    processed_files = process_main()
-    loaded_chunks = ingest_main()
-    
-    logging.info(f"Обработано файлов: {processed_files}, Загружено чанков: {loaded_chunks}")
+    try:
+        # Обработка документов
+        process_result = process_main()
+        if not process_result:
+            raise ValueError("No files were processed")
+        
+        # Загрузка в Qdrant
+        loaded_chunks = ingest_main()
+        
+        return {
+            "processed_files": len(process_result["processed_files"]),
+            "loaded_chunks": loaded_chunks
+        }
+    except Exception as e:
+        logging.error(f"Ошибка обработки документов: {str(e)}")
+        return {
+            "error": str(e),
+            "processed_files": 0,
+            "loaded_chunks": 0
+        }
 
 # Удаление документов (обновленная версия)
 @app.post("/documents/delete")
@@ -298,7 +320,6 @@ async def process_documents() -> Dict:
 
 @app.get("/")
 async def dashboard(request: Request):
-    """Главная страница"""
     try:
         collection_info = await get_collection_info()
         stats = await get_detailed_stats()
@@ -313,7 +334,8 @@ async def dashboard(request: Request):
                 "type_stats": stats['type_stats'],
                 "size_stats": stats['size_stats'],
                 "time_stats": stats['time_stats'],
-                "total_chunks": collection_info['points_count']
+                "total_chunks": collection_info['points_count'],
+                "has_llm": True  # Добавляем флаг наличия LLM
             }
         )
     except Exception as e:
@@ -422,6 +444,105 @@ async def global_exception_handler(request: Request, exc: Exception):
         },
         status_code=500
     )
+
+# Добавим новый endpoint для чата
+
+@app.get("/chat", response_class=HTMLResponse)
+async def chat_page(request: Request):
+    return templates.TemplateResponse("chat.html", {"request": request})
+
+@app.post("/api/chat")
+async def chat_with_document(data: Dict = Body(...)):
+    question = data.get('question', '')
+    if not question:
+        raise HTTPException(status_code=400, detail="Question is required")
+
+    try:
+        # 1. Векторизация вопроса
+        query_embedding = embedding_model.encode(question).tolist()
+        print(f"Вектор вопроса: {query_embedding[:5]}...")  # Логируем первые 5 значений
+
+        # 2. Поиск в Qdrant с базовыми параметрами
+        results = qdrant_client.search(
+            collection_name=config['qdrant']['collection_name'],
+            query_vector=query_embedding,
+            limit=3,  # Берем 3 наиболее релевантных результата
+            with_payload=True,
+            score_threshold=0.5  # Минимальный порог схожести
+        )
+        
+        print(f"Найдено результатов: {len(results)}")  # Отладочная информация
+
+        # 3. Формирование контекста с проверкой
+        context = ""
+        if results:
+            context_parts = []
+            for hit in results:
+                payload = hit.payload
+                if payload and 'text' in payload and 'metadata' in payload:
+                    source = payload['metadata'].get('source', 'Неизвестный источник')
+                    page = payload['metadata'].get('page', 'N/A')
+                    context_parts.append(
+                        f"Источник: {source}\n"
+                        f"Страница: {page}\n"
+                        f"Текст: {payload['text']}\n"
+                        f"Сходство: {hit.score:.2f}\n"
+                        "———"
+                    )
+            context = "\n".join(context_parts)
+        
+        print(f"Сформированный контекст:\n{context}")  # Логируем контекст
+
+        # 4. Формирование промта
+        prompt = (
+            f"{config['llm']['system_prompt']}\n\n"
+            f"Контекст:\n{context if context else 'Нет релевантного контекста'}\n\n"
+            f"Вопрос: {question}\n\n"
+            "Ответ:"
+        )
+
+        # 5. Генерация ответа
+        response = await llm_client.generate_response(
+            prompt=prompt,
+            **config['llm']['generation_params']
+        )
+        
+        return {
+            "response": response,
+            "context_used": bool(context),
+            "sources": [hit.payload.get('metadata', {}) for hit in results] if results else []
+        }
+        
+    except Exception as e:
+        logging.error(f"Ошибка в chat_with_document: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+def format_context(search_results) -> str:
+    """Форматирует результаты поиска в читаемый контекст для LLM"""
+    context_parts = []
+    max_context_length = config['llm']['context_window'] // 2  # Оставляем место для ответа
+    
+    for hit in sorted(search_results, key=lambda x: -x.score)[:3]:  # Берем топ-3 результата
+        payload = hit.payload
+        metadata = payload.get('metadata', {})
+        
+        # Форматируем каждый фрагмент контекста
+        context_part = (
+            f"### Документ: {metadata.get('source', 'Без названия')}\n"
+            f"### Раздел: {metadata.get('chapter', 'Нет информации')}\n"
+            f"### Страница: {metadata.get('page', 'N/A')}\n"
+            f"Контент:\n{payload.get('text', '')}\n\n"
+        )
+        
+        # Проверяем, не превысим ли максимальную длину
+        if len('\n'.join(context_parts) + context_part) < max_context_length:
+            context_parts.append(context_part)
+        else:
+            break
+    
+    return '\n'.join(context_parts)
+
+
 
 if __name__ == "__main__":
     import uvicorn

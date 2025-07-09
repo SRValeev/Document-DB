@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Чат</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Чат</h1>
+        
+        <div class="chat-container">
+            <div id="chat-messages" class="messages-container"></div>
+            
+            <form id="chat-form" class="chat-form">
+                <input type="text" id="user-input" placeholder="Задайте вопрос о документе..." required>
+                <button type="submit" class="btn btn-primary">Отправить</button>
+            </form>
+        </div>
+        
+        <div class="actions">
+            <a href="/" class="btn">На главную</a>
+        </div>
+    </div>
+
+    <script>
+        const chatForm = document.getElementById('chat-form');
+        const chatMessages = document.getElementById('chat-messages');
+        
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const input = document.getElementById('user-input');
+            const question = input.value.trim();
+            
+            if (!question) return;
+            
+            // Добавляем вопрос в чат
+            addMessage('user', question);
+            input.value = '';
+            
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ question })
+                });
+                
+                const data = await response.json();
+                addMessage('assistant', data.response);
+            } catch (error) {
+                addMessage('assistant', 'Ошибка при получении ответа');
+                console.error(error);
+            }
+        });
+        
+        function addMessage(role, content) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+            messageDiv.textContent = content;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+    </script>
+</body>
+</html>
