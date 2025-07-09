@@ -14,8 +14,7 @@ def main() -> int:
     try:
         client = QdrantClient(
             host=config['qdrant']['host'],
-            port=config['qdrant']['port'],
-            timeout=30  # Увеличили таймаут
+            port=config['qdrant']['port']
         )
         
         # Создаем коллекцию (если не существует)
@@ -52,23 +51,28 @@ def main() -> int:
             return 0
         
         # Используем настройки производительности из конфига
-        batch_size = perf_config.get('qdrant_batch_size', 50)
+        batch_size = perf_config.get('qdrant_batch_size', 20)
         success_count = 0
         
         for i in tqdm(range(0, len(points), batch_size), desc="Загрузка в Qdrant"):
             batch = points[i:i+batch_size]
             try:
-                client.upsert(
+                # Убрали параметр timeout, который вызывает ошибку
+                operation_result = client.upsert(
                     collection_name=config['qdrant']['collection_name'],
                     points=batch,
-                    wait=True,
-                    timeout=60  # Увеличили таймаут
+                    wait=True
                 )
-                success_count += len(batch)
+                
+                if operation_result.status == 'completed':
+                    success_count += len(batch)
+                else:
+                    print(f"\nОшибка загрузки батча {i//batch_size}: {operation_result.status}")
+                    batch_size = max(1, batch_size // 2)
+                    print(f"Уменьшаем размер батча до {batch_size}")
             except Exception as e:
                 print(f"\nОшибка загрузки батча {i//batch_size}: {str(e)}")
-                # Пробуем уменьшить размер батча
-                batch_size = max(10, batch_size // 2)
+                batch_size = max(1, batch_size // 2)
                 print(f"Уменьшаем размер батча до {batch_size}")
         
         print(f"\nУспешно загружено {success_count}/{len(points)} чанков")

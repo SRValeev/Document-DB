@@ -65,3 +65,15 @@ def generate_unique_id():
 
 def create_zero_vector(size):
     return np.zeros(size).tolist()
+
+def get_processed_files_list(file_path):
+    """Возвращает список уже обработанных файлов"""
+    if os.path.exists(file_path):
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return set(line.strip() for line in f)
+    return set()
+
+def add_to_processed_files(file_path, processed_file):
+    """Добавляет файл в список обработанных"""
+    with open(file_path, 'a', encoding='utf-8') as f:
+        f.write(processed_file + '\n')
