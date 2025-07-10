@@ -60,7 +60,7 @@ def main() -> dict:
             logging.info(f"Processed {file_path} -> {len(chunks)} chunks")
         
         # Создание глобального индекса
-        processor.create_global_index(output_dir)
+        processor.create_global_index(config['paths']['index_dir'])
         
         # Очистка каталога data после успешной обработки
         clear_data_directory(data_dir)

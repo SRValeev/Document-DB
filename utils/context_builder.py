@@ -16,59 +16,45 @@ except Exception as e:
 
 class ContextBuilder:
     def __init__(self, config: Dict[str, Any]):
-        """
-        Инициализация построителя контекста
-        
-        Args:
-            config: Конфигурация из config.yaml
-        """
-        self.config = config.get('context', {})
-        self.logger = logging.getLogger(__name__)
-        
-        # Параметры из конфига
-        self.diversity_factor = self.config.get('diversity_factor', 0.3)
-        self.min_relevance = self.config.get('min_relevance', 0.65)
-        self.max_duplicate_distance = self.config.get('max_duplicate_distance', 0.2)
-        self.max_chunks = self.config.get('max_chunks', 5)
-        self.clean_stopwords = self.config.get('clean_stopwords', True)
+            if not config or 'context' not in config:
+                raise ValueError("Config is missing required 'context' section")
+            
+            self.config = config
+            self.context_config = config.get('context', {})
+            
+            # Установка параметров по умолчанию
+            self.diversity_factor = self.context_config.get('diversity_factor', 0.3)
+            self.min_relevance = self.context_config.get('min_relevance', 0.65)
+            self.max_chunks = self.context_config.get('max_chunks', 5)
 
     def build_context(self, query_embedding: List[float], qdrant_results: List) -> str:
-        """Версия с полной отладкой"""
-        self.logger.debug(f"Начало build_context, получено {len(qdrant_results)} результатов")
+        """Строит контекст строго по параметрам из config.yaml"""
+        params = self.config['context']
         
-        if not qdrant_results:
-            self.logger.warning("Пустой список результатов от Qdrant")
-            return ""
-
-        try:
-            # Проверка структуры результатов
-            sample_result = qdrant_results[0]
-            if not hasattr(sample_result, 'payload'):
-                self.logger.error("Некорректная структура результатов: отсутствует payload")
-                return ""
-                
-            # Фильтрация по релевантности
-            filtered = [r for r in qdrant_results if r.score >= self.min_relevance]
-            self.logger.debug(f"После фильтрации осталось {len(filtered)} результатов")
-            
-            if not filtered:
-                self.logger.warning("Нет результатов, прошедших порог релевантности")
-                return ""
-                
-            # Проверка наличия векторов
-            if not all(hasattr(r, 'vector') for r in filtered):
-                self.logger.warning("Часть результатов не содержит векторов, возвращаем топ по score")
-                return self._format_context([r for r in filtered[:self.max_chunks]])
-                
-            # MMR выборка
+        # Фильтрация по минимальной релевантности
+        filtered = [
+            r for r in qdrant_results 
+            if r.score >= params['min_relevance']
+        ]
+        
+        # MMR или простой топ
+        if params.get('mmr_enabled', True):
             selected = self._mmr_selection(query_embedding, filtered)
-            self.logger.debug(f"Выбрано {len(selected)} чанков после MMR")
-            
-            return self._format_context(selected)
-            
-        except Exception as e:
-            self.logger.error(f"Ошибка построения контекста: {str(e)}", exc_info=True)
-            return ""
+        else:
+            selected = sorted(filtered, key=lambda x: x.score, reverse=True)[:params['max_chunks']]
+        
+        # Форматирование
+        context_parts = []
+        for result in selected:
+            payload = result.payload
+            meta = payload.get('metadata', {})
+            context_parts.append(
+                f"[[{meta.get('source', 'Документ')}]]\n"
+                f"Стр. {meta.get('page', '?')} | Релевантность: {result.score:.2f}\n"
+                f"{payload.get('text', '')}"
+            )
+        
+        return "\n\n".join(context_parts)
 
     def _format_context(self, results: List) -> str:
         """Форматирование отобранных результатов"""

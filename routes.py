@@ -143,6 +143,7 @@ async def get_detailed_stats() -> Dict:
         'time_stats': time_stats
     }
 
+
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     """Главная страница с аналитикой"""
@@ -171,6 +172,16 @@ async def dashboard(request: Request):
             {"request": request, "error": str(e)},
             status_code=500
         )
+    
+def _get_file_types_stats(global_index: dict) -> dict:
+    """Статистика по типам файлов"""
+    from collections import defaultdict
+    types = defaultdict(int)
+    for file in global_index.get('files', []):
+        if 'path' in file:
+            ext = os.path.splitext(file['path'])[1].lower()
+            types[ext] += 1
+    return dict(types)
 
 @router.get("/documents", response_class=HTMLResponse)
 async def documents_page(request: Request):
@@ -298,20 +309,26 @@ async def upload_page(request: Request):
     return templates.TemplateResponse("upload.html", {"request": request})
 
 @router.post("/upload")
-async def upload_files(request: Request, files: List[UploadFile] = File(...)):
+async def upload_files(files: List[UploadFile] = File(...)):
     try:
         saved_files = []
         data_dir = config['paths']['data_dir']
         
         for file in files:
-            file_ext = Path(file.filename).suffix
-            new_filename = f"{generate_unique_id()}{file_ext}"
+            # Сохраняем оригинальное имя с добавлением UUID
+            original_name = Path(file.filename).stem
+            ext = Path(file.filename).suffix
+            new_filename = f"{original_name}_{generate_unique_id()}{ext}"
+            
             file_path = os.path.join(data_dir, new_filename)
             
             with open(file_path, "wb") as f:
                 shutil.copyfileobj(file.file, f)
             
-            saved_files.append(new_filename)
+            saved_files.append({
+                "original_name": file.filename,
+                "saved_as": new_filename
+            })
             logger.info(f"Uploaded file: {new_filename}")
         
         # Запускаем обработку в фоне
@@ -331,66 +348,75 @@ async def chat_page(request: Request):
 
 @router.post("/api/chat")
 async def chat_with_document(request: Request, data: Dict = Body(...)):
-    """Эндпоинт для чат-взаимодействия с документами"""
     try:
+        config = load_config()
         question = data.get('question', '').strip()
         if not question:
             raise HTTPException(status_code=400, detail="Требуется вопрос")
 
-        # Получаем зависимости из app.state
-        qdrant_client = request.app.state.qdrant_client
-        embedding_model = request.app.state.embedding_model
-        context_builder = request.app.state.context_builder
+        # Получаем все параметры из конфига
+        qdrant_config = config['qdrant']
+        processing_config = config['processing']
+        context_config = config['context']
+        llm_config = config['llm']
 
         # Векторизация вопроса
-        question_embedding = embedding_model.encode(question).tolist()
-        
-        # Поиск в Qdrant
-        search_results = qdrant_client.search(
-            collection_name=config['qdrant']['collection_name'],
+        question_embedding = request.app.state.embedding_model.encode(
+            question,
+            normalize_embeddings=True
+        ).tolist()
+
+        # Поиск с параметрами из конфига
+        search_results = request.app.state.qdrant_client.search(
+            collection_name=qdrant_config['collection_name'],
             query_vector=question_embedding,
-            limit=config['context']['max_chunks'] * 2,
+            limit=context_config['max_chunks'] * 2,  # Берем в 2 раза больше для MMR
             with_payload=True,
-            with_vectors=True,  # Добавляем векторы для MMR
-            score_threshold=config['processing']['min_similarity']
+            with_vectors=context_config.get('with_vectors', False),
+            score_threshold=processing_config['min_similarity']
         )
+
+        # Формирование контекста с MMR (если включено в конфиге)
+        if context_config.get('mmr_enabled', True):
+            context_builder = request.app.state.context_builder
+            context = context_builder.build_context(
+                query_embedding=question_embedding,
+                qdrant_results=search_results
+            )
+        else:
+            # Простая сортировка по релевантности
+            context_chunks = []
+            for hit in sorted(search_results, key=lambda x: x.score, reverse=True):
+                if hit.score < processing_config['min_similarity']:
+                    continue
+                payload = hit.payload
+                context_chunks.append(
+                    f"Источник: {payload.get('metadata', {}).get('source', '')}\n"
+                    f"{payload.get('text', '')}"
+                )
+            context = "\n\n".join(context_chunks[:context_config['max_chunks']])
+
+        # Логирование для отладки
+        logger.debug(f"Found {len(search_results)} fragments, using {min(len(search_results), context_config['max_chunks'])}")
         
-        # Формирование контекста
-        context = context_builder.build_context(
-            query_embedding=question_embedding,
-            qdrant_results=search_results  # Правильный аргумент
-        )
-        
-        # Генерация ответа через LLM
+        if not context.strip():
+            return JSONResponse(
+                content={"response": "Релевантная информация не найдена в документах"},
+                status_code=404
+            )
+
+        # Генерация ответа
         llm_response = await llm_client.generate_response(
             prompt=question,
             context=context,
-            **config['llm']['generation_params']
+            **llm_config['generation_params']
         )
 
-        # Формируем источники
-        sources = []
-        if search_results:
-            for hit in search_results[:3]:  # Топ-3 результата
-                if hit.payload and 'metadata' in hit.payload:
-                    sources.append({
-                        "source": hit.payload['metadata'].get('source', 'Unknown'),
-                        "page": hit.payload['metadata'].get('page', 'N/A'),
-                        "score": float(hit.score),
-                        "excerpt": hit.payload.get('text', '')[:200] + "..."
-                    })
+        return {"response": llm_response}
 
-        return {
-            "response": llm_response,
-            "sources": sources,
-            "context_used": bool(context.strip())
-        }
     except Exception as e:
         logger.error(f"Chat error: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Ошибка обработки запроса: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=str(e))
     
 @router.post("/purge")
 async def purge_database():
@@ -448,3 +474,4 @@ async def debug_check_data():
     except Exception as e:
         logger.error(f"Debug check error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+

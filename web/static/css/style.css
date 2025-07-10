@@ -342,3 +342,26 @@ h1, h2, h3 {
     border-radius: 4px;
     margin-right: 10px;
 }
+/* Стили для карточек статистики */
+.stat-card {
+    transition: transform 0.3s;
+}
+.stat-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+}
+
+/* Адаптивная таблица */
+.table-responsive {
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+/* Стили для таблицы индекса */
+.table-index {
+    font-size: 0.9rem;
+}
+.table-index td {
+    vertical-align: middle;
+    padding: 0.5rem;
+}

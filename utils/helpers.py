@@ -10,11 +10,14 @@ import uuid
 import numpy as np
 from logging.handlers import RotatingFileHandler
 
-def setup_logging(log_file="stdout.log"):
+def setup_logging(log_file=None):
     """Настройка централизованного логирования"""
     try:
+        config = load_config()
+        log_path = config['paths']['log_file']
+        
         # Создаем директорию для логов, если нужно
-        log_dir = os.path.dirname(log_file)
+        log_dir = os.path.dirname(log_path)
         if log_dir and not os.path.exists(log_dir):
             os.makedirs(log_dir, exist_ok=True)
 
@@ -24,16 +27,15 @@ def setup_logging(log_file="stdout.log"):
 
         # Формат сообщений
         formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            encoding='utf-8'  # Добавляем кодировку
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
 
         # Файловый обработчик с ротацией
         file_handler = RotatingFileHandler(
-            filename=log_file,
+            filename=log_path,
             maxBytes=10*1024*1024,  # 10 MB
             backupCount=5,
-            encoding='utf-8'  # Явно указываем кодировку
+            encoding='utf-8'
         )
         file_handler.setFormatter(formatter)
 
@@ -50,12 +52,12 @@ def setup_logging(log_file="stdout.log"):
         logger.addHandler(file_handler)
         logger.addHandler(console_handler)
 
-        logger.info("Логгер успешно инициализирован")
+        logger.info(f"Логгер успешно инициализирован, файл логов: {os.path.abspath(log_path)}")
         return True
     except Exception as e:
         print(f"CRITICAL: Не удалось настроить логирование: {str(e)}")
         return False
-
+    
 def windows_path(path):
     if platform.system() == 'Windows':
         return os.path.normpath(path)

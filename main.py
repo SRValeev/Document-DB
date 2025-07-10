@@ -6,26 +6,20 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from qdrant_client import QdrantClient
 from qdrant_client.models import VectorParams, Distance
-from utils.helpers import load_config, clear_directory
+from utils.helpers import load_config, clear_directory, setup_logging
 import logging
 import os
 
-# Настройка логгера
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("stdout.log"),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Управление жизненным циклом приложения"""
     config = load_config()
     
+    # Инициализация логгера (должно быть в самом начале)
+    setup_logging(config['paths']['log_file'])
+    logger = logging.getLogger(__name__)
+
     # Инициализация Qdrant
     qdrant_client = QdrantClient(
         host=config['qdrant']['host'],
