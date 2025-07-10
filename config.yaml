@@ -1,68 +1,122 @@
-# Основные настройки обработки
-processing:
-  chunk_size: 768                # Оптимальный размер чанка для multilingual моделей
-  chunk_overlap: 200             # Перекрытие для сохранения контекста
-  embedding_model: "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
-  spacy_model: "ru_core_news_md" # Модель для NLP обработки
-  min_similarity: 0.72           # Порог схожести для поиска (0-1)
-  num_workers: 4                 # Потоки для параллельной обработки
-  use_ocr: false                 # Включение OCR для изображений
-  device: "cpu"                  # cpu/cuda
+# ======================
+# Основные настройки системы
+# ======================
+system:
+  name: "RAG Document Assistant"
+  version: "1.0"
+  debug: false  # Режим отладки (логирование в stdout)
 
 # Настройки производительности
 performance:
   embedding_batch_size: 32       # Размер батча для векторизации
   qdrant_batch_size: 100         # Размер батча для загрузки в Qdrant
   max_threads: 4                 # Максимальное число потоков
-  max_file_size_mb: 50           # Максимальный размер файла (MB)
 
+
+
+# ======================
+# Настройки обработки документов
+# ======================
+processing:
+  # Настройки чанкинга
+  chunk_size: 768        # Оптимальный размер чанка в токенах
+  chunk_overlap: 200     # Перекрытие между чанками
+  min_chunk_size: 300    # Минимальный размер чанка
+  smart_chunking: true   # Использовать NLP для разделения
+  
+  # Модели
+  embedding_model: "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+  spacy_model: "ru_core_news_md"
+  
+  # Пороги
+  min_similarity: 0.65   # Минимальная релевантность для поиска (0-1)
+  
+  # Ресурсы
+  num_workers: 4         # Количество потоков обработки
+  device: "cpu"          # cpu/cuda/mps
+  max_file_size_mb: 50   # Макс. размер файла
+
+# ======================
+# Настройки контекста
+# ======================
+context:
+  max_chunks: 5          # Макс. число чанков в контексте
+  min_relevance: 0.40    # Минимальная релевантность для включения
+  mmr_enabled: true      # Использовать Maximal Marginal Relevance
+  diversity_factor: 0.3  # Коэффициент разнообразия (0-1)
+  clean_stopwords: true  # Очищать от стоп-слов
+  
+  # Форматирование
+  show_sources: true     # Показывать источники в ответе
+  show_page_numbers: true
+  show_relevance_scores: false
+
+
+# ======================
 # Настройки Qdrant
+# ======================
 qdrant:
   host: "localhost"
   port: 6333
   collection_name: "document_chunks"
-  vector_size: 768               # Размерность вектора модели
+  vector_size: 768       # Размерность векторов модели
+  
+  # Параметры поиска
   search_params:
-    limit: 5                     # Лимит результатов поиска
-    with_payload: true           # Включать метаданные
-    with_vectors: false          # Не возвращать векторы
-    exact_search: false          # Использовать приближенный поиск
+    limit: 10            # Макс. результатов поиска
+    with_payload: true   # Включать метаданные
+    with_vectors: false  # Не возвращать векторы
+    exact_search: false  # Приближенный поиск
 
-# Настройки контекста (новый раздел)
-context:
-  max_chunks: 5                  # Максимальное число чанков в контексте
-  diversity_factor: 0.4          # Коэффициент разнообразия (0-1)
-  min_relevance: 0.65            # Минимальная релевантность
-  max_duplicate_distance: 0.2    # Макс. расстояние для дубликатов
-  mmr_enabled: true              # Включить MMR для разнообразия
-  clean_stopwords: true          # Очистка от стоп-слов
-
+# ======================
 # Пути к директориям
+# ======================
 paths:
+  log_file: "logs/application.log"
   data_dir: "data"               # Исходные файлы
-  output_dir: "processed"        # Обработанные данные
-  images_dir: "processed/images" # Директория для изображений
-  log_file: "log/stdout.log"         # Файл логов
-  tempdir: "temp"                # Временные файлы
-  protected_files: ["global_index.json"]  # Файлы, которые не будут удаляться
+  output_dir: "processed"        # Обработанные чанки
+  index_dir: "index"             # Индексы и метаданные
+  log_dir: "logs"                # Директория логов
+  temp_dir: "temp"               # Временные файлы
+  global_index_file: "global_index.json"
+  
+  protected_files:               # Файлы, которые не удаляются
+    - "global_index.json"
+    - "processing_info.json"
 
-# Настройки LLM (опционально)
+# ======================
+# Настройки LLM
+# ======================
 llm:
   api_url: "http://localhost:1234/v1"
-  model: "google/gemma-3-1b"          # Имя модели в LM Studio
-  context_window: 8000          # Размер контекстного окна
+  model: "google/gemma-3-4b"         # Имя модели в LM Studio/Ollama
+  
+  # Параметры генерации
   generation_params:
-    temperature: 0.3
-    max_tokens: 1000
-    top_p: 0.9
-    frequency_penalty: 0.2
-    presence_penalty: 0.2
+    temperature: 0.3          # Креативность (0-1)
+    max_tokens: 1000          # Макс. длина ответа
+    top_p: 0.9                # Дискретизация вывода
+    frequency_penalty: 0.2    # Штраф за повторения
+    presence_penalty: 0.2     # Штраф за новые темы
+  
+  # Системный промпт
   system_prompt: |
     Ты - ассистент для работы с документами. Отвечай точно и по делу.
-    Используй только предоставленный контекст. Если ответа нет - скажи об этом.
+    Используй только предоставленный контекст. Если информации нет - скажи об этом.
 
-# Настройки OCR (только при use_ocr: true)
+# ======================
+# Настройки OCR (опционально)
+# ======================
 ocr:
-  languages: ["rus", "eng"]     # Языки для распознавания
-  dpi: 300                      # Разрешение обработки
-  timeout: 30                   # Таймаут в секундах
+  enabled: false              # Включить распознавание текста
+  languages: ["rus", "eng"]   # Языки для распознавания
+  dpi: 300                    # Разрешение обработки
+  timeout: 30                 # Таймаут в секундах
+
+# ======================
+# Настройки таблиц
+# ======================
+tables:
+  enabled: true               # Извлекать таблицы
+  max_table_size: 10          # Макс. строк в таблице
+  format: "markdown"          # markdown/csv/json
