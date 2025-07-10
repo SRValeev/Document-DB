@@ -1,34 +1,35 @@
-# file_processor.py
+#utils/file_processor.py
 import os
 import re
 import json
 import fitz
 import spacy
-import camelot
-import logging
-import tempfile
-import uuid
-import numpy as np
 import pytesseract
+import logging
 from PIL import Image
 from io import BytesIO
 from datetime import datetime
 from docx import Document
 from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
-from .helpers import load_config, normalize_text, windows_path, generate_unique_id
+from utils.helpers import load_config, normalize_text, generate_unique_id
 
 class FileProcessor:
     def __init__(self, config):
         self.config = config
-        self.nlp = spacy.load(config['processing']['spacy_model'])
+        self.logger = logging.getLogger(__name__)
         
-        # Инициализация модели эмбеддингов (как было в рабочей версии)
-        self.embedding_model = SentenceTransformer(
-            config['processing']['embedding_model']
-        )
-        
-        # Все оригинальные параметры из рабочей версии
+        try:
+            self.nlp = spacy.load(config['processing']['spacy_model'])
+            self.embedding_model = SentenceTransformer(
+                config['processing']['embedding_model'],
+                device=config['processing']['device']
+            )
+            self.logger.info("Models loaded successfully")
+        except Exception as e:
+            self.logger.error(f"Error loading models: {str(e)}", exc_info=True)
+            raise
+
         self.header_pattern = re.compile(
             r'^(Глава|Раздел|Часть|Параграф)\s+\d+[.:]?\s+', 
             re.IGNORECASE
@@ -37,45 +38,27 @@ class FileProcessor:
         self.global_headers = {}
         self.file_index = {}
         self.min_similarity = config['processing']['min_similarity']
-        self.temp_dir = config['paths']['tempdir']
         self.use_ocr = config['processing'].get('use_ocr', False)
-        self.images_dir = config['paths']['images_dir']
-        
-        os.makedirs(self.temp_dir, exist_ok=True)
-        os.makedirs(self.images_dir, exist_ok=True)
-        
-        self.chunk_index = {}
-        self.header_index = {}
-        self.section_index = {}
-        self.chunk_counter = 1
-
-    def _init_embedding_model(self):
-        """Безопасная инициализация модели эмбеддингов"""
-        try:
-            model_cfg = self.config['processing']['embedding_model']
-            self.embedding_model = SentenceTransformer(
-                model_cfg['name'],
-                device=model_cfg.get('device', 'cpu')
-            )
-            logging.info(f"Модель эмбеддингов загружена на {model_cfg.get('device', 'cpu')}")
-        except Exception as e:
-            logging.error(f"Ошибка загрузки модели: {str(e)}")
-            raise RuntimeError("Не удалось инициализировать модель эмбеддингов")
 
     def process_file(self, file_path):
-        if not self.nlp or not self.embedding_model:
-            logging.error("Модели не загружены, обработка невозможна")
+        if not hasattr(self, 'nlp') or not hasattr(self, 'embedding_model'):
+            self.logger.error("Models not loaded")
             return []
             
         file_id = generate_unique_id()
-        self.file_index[file_id] = windows_path(file_path)
+        self.file_index[file_id] = file_path
         
-        if file_path.lower().endswith('.pdf'):
-            return self._process_pdf(file_path, file_id)
-        elif file_path.lower().endswith(('.doc', '.docx')):
-            return self._process_docx(file_path, file_id)
-        else:
-            raise ValueError(f"Неподдерживаемый формат: {file_path}")
+        try:
+            if file_path.lower().endswith('.pdf'):
+                return self._process_pdf(file_path, file_id)
+            elif file_path.lower().endswith(('.doc', '.docx')):
+                return self._process_docx(file_path, file_id)
+            else:
+                self.logger.warning(f"Unsupported file format: {file_path}")
+                return []
+        except Exception as e:
+            self.logger.error(f"Error processing file {file_path}: {str(e)}", exc_info=True)
+            return []
 
     def _process_pdf(self, file_path, file_id):
         chunks = []
@@ -86,11 +69,11 @@ class FileProcessor:
             with fitz.open(file_path) as doc:
                 try:
                     toc = doc.get_toc()
-                except:
+                except Exception as e:
+                    self.logger.warning(f"Could not extract TOC: {str(e)}")
                     toc = []
-                    logging.warning(f"Не удалось извлечь оглавление для {file_path}")
                 
-                for page_num in tqdm(range(len(doc)), desc=f"Обработка {file_id}"):
+                for page_num in tqdm(range(len(doc)), desc=f"Processing {file_id}"):
                     page = doc.load_page(page_num)
                     
                     # Обработка оглавления
@@ -101,24 +84,17 @@ class FileProcessor:
                             elif item[0] == 2:
                                 current_section = normalize_text(item[1])
                     
-                    self._register_headers(file_id, page_num, current_chapter, current_section)
-                    
-                    # Обработка изображений (только если включено в конфиге)
+                    # Обработка изображений (OCR)
                     if self.use_ocr:
                         image_list = page.get_images(full=True)
                         for img_index, img in enumerate(image_list, 1):
-                            xref = img[0]
-                            base_image = doc.extract_image(xref)
-                            image_bytes = base_image["image"]
-                            image = Image.open(BytesIO(image_bytes))
-                            
-                            # OCR обработка
                             try:
+                                base_image = doc.extract_image(img[0])
+                                image = Image.open(BytesIO(base_image["image"]))
                                 ocr_text = pytesseract.image_to_string(image, lang='rus+eng')
-                                ocr_text = normalize_text(ocr_text)
-                                if ocr_text:
+                                if ocr_text.strip():
                                     chunks.append(self._create_chunk(
-                                        f"Изображение {img_index}: {ocr_text}",
+                                        f"Изображение {img_index}: {normalize_text(ocr_text)}",
                                         file_id, 
                                         page_num,
                                         "image",
@@ -126,35 +102,84 @@ class FileProcessor:
                                         current_section
                                     ))
                             except Exception as e:
-                                logging.error(f"Ошибка OCR: {str(e)}")
+                                self.logger.warning(f"OCR failed: {str(e)}")
                     
                     # Обработка текста
-                    blocks = page.get_text("blocks")
-                    page_text = ""
-                    for block in blocks:
-                        if not block[4].strip():
-                            continue
-                        block_text = normalize_text(block[4].replace('\n', ' '))
-                        page_text += block_text + " "
-                    
-                    # Разбивка на чанки с учетом контекста
-                    if page_text:
+                    text = page.get_text("text")
+                    if text.strip():
                         chunks.extend(self._split_text_into_chunks(
-                            page_text, 
+                            text, 
                             file_id, 
                             page_num,
                             "text",
                             current_chapter,
                             current_section
                         ))
-        except Exception as e:
-            logging.error(f"Ошибка обработки PDF {file_path}: {str(e)}")
-            return []
+            
+            self.logger.info(f"Processed PDF: {file_path}, chunks: {len(chunks)}")
+            return chunks
         
-        return chunks
+        except Exception as e:
+            self.logger.error(f"PDF processing failed: {str(e)}", exc_info=True)
+            return []
+
+    def _process_docx(self, file_path, file_id):
+        chunks = []
+        current_page = 0
+        current_chapter = ""
+        current_section = ""
+        
+        try:
+            doc = Document(file_path)
+            full_text = ""
+            
+            for para in doc.paragraphs:
+                text = normalize_text(para.text.strip())
+                if not text:
+                    continue
+                    
+                style_name = para.style.name.lower() if para.style else ""
+                
+                if 'heading 1' in style_name:
+                    current_chapter = text
+                elif 'heading 2' in style_name:
+                    current_section = text
+                
+                full_text += text + " "
+            
+            if full_text.strip():
+                chunks.extend(self._split_text_into_chunks(
+                    full_text, 
+                    file_id, 
+                    current_page,
+                    "text",
+                    current_chapter,
+                    current_section
+                ))
+            
+            # Обработка таблиц
+            for table in doc.tables:
+                table_text = "ТАБЛИЦА: "
+                for row in table.rows:
+                    for cell in row.cells:
+                        table_text += cell.text + " | "
+                chunks.append(self._create_chunk(
+                    table_text, 
+                    file_id, 
+                    current_page,
+                    "table",
+                    current_chapter,
+                    current_section
+                ))
+            
+            self.logger.info(f"Processed DOCX: {file_path}, chunks: {len(chunks)}")
+            return chunks
+            
+        except Exception as e:
+            self.logger.error(f"DOCX processing failed: {str(e)}", exc_info=True)
+            return []
 
     def _split_text_into_chunks(self, text, file_id, page, content_type, chapter, section):
-        """Разбивает текст на чанки с учетом контекста"""
         words = text.split()
         chunk_size = self.config['processing']['chunk_size']
         chunk_overlap = self.config['processing']['chunk_overlap']
@@ -165,7 +190,6 @@ class FileProcessor:
             end = min(start + chunk_size, len(words))
             chunk_text = ' '.join(words[start:end])
             
-            # Добавляем контекстные заголовки
             context = ""
             if chapter:
                 context += f"Раздел: {chapter}. "
@@ -186,67 +210,8 @@ class FileProcessor:
         
         return chunks
 
-    def _process_docx(self, file_path, file_id):
-        doc = Document(file_path)
-        chunks = []
-        current_page = 0
-        current_chapter = ""
-        current_section = ""
-        paragraph_count = 0
-        
-        full_text = ""
-        for para in doc.paragraphs:
-            paragraph_count += 1
-            if paragraph_count % 50 == 0:
-                current_page += 1
-                
-            text = normalize_text(para.text.strip())
-            if not text:
-                continue
-                
-            content_type = "text"
-            style_name = para.style.name.lower() if para.style else ""
-            
-            if 'heading 1' in style_name:
-                current_chapter = text
-                content_type = "header"
-            elif 'heading 2' in style_name:
-                current_section = text
-                content_type = "subheader"
-                
-            self._register_headers(file_id, current_page, current_chapter, current_section)
-            full_text += text + " "
-        
-        # Разбивка на чанки
-        if full_text:
-            chunks.extend(self._split_text_into_chunks(
-                full_text, 
-                file_id, 
-                current_page,
-                "text",
-                current_chapter,
-                current_section
-            ))
-        
-        # Обработка таблиц
-        for table in doc.tables:
-            table_text = "ТАБЛИЦА: "
-            for row in table.rows:
-                for cell in row.cells:
-                    table_text += cell.text + " | "
-            chunks.append(self._create_chunk(
-                table_text, 
-                file_id, 
-                current_page,
-                "table",
-                current_chapter,
-                current_section
-            ))
-        
-        return chunks
-
     def _create_chunk(self, text, file_path, page, content_type, chapter, section):
-        chunk_id = str(uuid.uuid4())
+        chunk_id = generate_unique_id()
         chunk = {
             "id": chunk_id,
             "text": text,
@@ -261,44 +226,46 @@ class FileProcessor:
                 "text_length": len(text)
             }
         }
-        self.chunk_counter += 1
         return chunk
 
-    def _register_headers(self, file_id, page, chapter, section):
-        key = f"{file_id}_{page}"
-        self.global_headers[key] = chapter or section
-
     def vectorize_chunks(self, chunks):
-        """Оригинальный метод векторизации"""
-        texts = [chunk['text'] for chunk in chunks]
-        embeddings = []
-        
-        batch_size = 32
-        for i in tqdm(range(0, len(texts), batch_size), desc="Векторизация"):
-            batch = texts[i:i+batch_size]
-            embeddings.extend(self.embedding_model.encode(batch))
-        
-        for i, chunk in enumerate(chunks):
-            chunk['embedding'] = embeddings[i].tolist()
-        
-        return chunks
+        """Векторизация чанков"""
+        try:
+            texts = [chunk['text'] for chunk in chunks]
+            embeddings = []
+            
+            batch_size = self.config['performance']['embedding_batch_size']
+            for i in range(0, len(texts), batch_size):
+                batch = texts[i:i+batch_size]
+                embeddings.extend(self.embedding_model.encode(batch))
+            
+            for i, chunk in enumerate(chunks):
+                chunk['embedding'] = embeddings[i].tolist()
+            
+            self.logger.info(f"Vectorized {len(chunks)} chunks")
+            return chunks
+            
+        except Exception as e:
+            self.logger.error(f"Vectorization failed: {str(e)}", exc_info=True)
+            return []
 
     def save_chunks(self, chunks, output_file):
         chunks = self.vectorize_chunks(chunks)
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(chunks, f, ensure_ascii=False, indent=2)
+        try:
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(chunks, f, ensure_ascii=False, indent=2)
+            self.logger.info(f"Saved chunks to {output_file}")
+        except Exception as e:
+            self.logger.error(f"Failed to save chunks: {str(e)}", exc_info=True)
 
     def create_global_index(self, output_dir):
-        index_data = {
-            "global_headers": self.global_headers,
-            "file_index": self.file_index,
-            "header_index": self.header_index,
-            "section_index": self.section_index,
-            "chunk_index": list(self.chunk_index.keys())
-        }
-        
-        index_file = os.path.join(output_dir, "global_index.json")
-        with open(index_file, 'w', encoding='utf-8') as f:
-            json.dump(index_data, f, ensure_ascii=False, indent=4)
-        
-        logging.info(f"Создан глобальный индекс с {len(self.chunk_index)} чанками")
+        try:
+            index_file = os.path.join(output_dir, "global_index.json")
+            with open(index_file, 'w', encoding='utf-8') as f:
+                json.dump({
+                    "file_index": self.file_index,
+                    "global_headers": self.global_headers
+                }, f, ensure_ascii=False, indent=4)
+            self.logger.info("Created global index")
+        except Exception as e:
+            self.logger.error(f"Failed to create index: {str(e)}", exc_info=True)

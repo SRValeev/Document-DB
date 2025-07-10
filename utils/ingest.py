@@ -3,11 +3,14 @@ import json
 from tqdm import tqdm
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, VectorParams, Distance
-from utils.helpers import load_config
+from utils.helpers import load_config, setup_logging
+from utils.helpers import clear_directory
+import logging
 
 def main() -> int:
     """Основная функция загрузки данных в Qdrant"""
     config = load_config()
+    setup_logging(config['paths']['log_file'])
     processed_dir = config['paths']['output_dir']
     perf_config = config.get('performance', {})
     
@@ -20,7 +23,9 @@ def main() -> int:
         # Создаем коллекцию (если не существует)
         try:
             client.get_collection(config['qdrant']['collection_name'])
-        except:
+            logging.info("Collection already exists")
+        except Exception as e:
+            logging.warning(f"Collection not found, creating new: {str(e)}")
             client.recreate_collection(
                 collection_name=config['qdrant']['collection_name'],
                 vectors_config=VectorParams(
@@ -28,8 +33,11 @@ def main() -> int:
                     distance=Distance.COSINE
                 )
             )
+            logging.info("Collection created successfully")
         
         points = []
+        processed_files = 0
+        
         for file in os.listdir(processed_dir):
             if file.endswith('.json') and file != 'global_index.json':
                 file_path = os.path.join(processed_dir, file)
@@ -37,17 +45,20 @@ def main() -> int:
                     chunks = json.load(f)
                     for chunk in chunks:
                         if 'embedding' in chunk:
+                            vector = chunk.pop('embedding')
                             points.append(PointStruct(
                                 id=chunk['id'],
-                                vector=chunk['embedding'],
+                                vector=vector,
                                 payload={
                                     "text": chunk['text'],
-                                    "metadata": chunk['metadata']
+                                    "metadata": chunk['metadata'],
+                                    "vector": vector  # Сохраняем для MMR
                                 }
                             ))
+                    processed_files += 1
         
         if not points:
-            print("Нет данных для загрузки")
+            logging.warning("No data to load")
             return 0
         
         # Используем настройки производительности из конфига
@@ -57,7 +68,6 @@ def main() -> int:
         for i in tqdm(range(0, len(points), batch_size), desc="Загрузка в Qdrant"):
             batch = points[i:i+batch_size]
             try:
-                # Убрали параметр timeout, который вызывает ошибку
                 operation_result = client.upsert(
                     collection_name=config['qdrant']['collection_name'],
                     points=batch,
@@ -67,24 +77,28 @@ def main() -> int:
                 if operation_result.status == 'completed':
                     success_count += len(batch)
                 else:
-                    print(f"\nОшибка загрузки батча {i//batch_size}: {operation_result.status}")
+                    logging.error(f"Batch {i//batch_size} failed: {operation_result.status}")
                     batch_size = max(1, batch_size // 2)
-                    print(f"Уменьшаем размер батча до {batch_size}")
             except Exception as e:
-                print(f"\nОшибка загрузки батча {i//batch_size}: {str(e)}")
+                logging.error(f"Batch {i//batch_size} error: {str(e)}")
                 batch_size = max(1, batch_size // 2)
-                print(f"Уменьшаем размер батча до {batch_size}")
         
-        print(f"\nУспешно загружено {success_count}/{len(points)} чанков")
+        clear_directory(config['paths']['output_dir'])
+        logging.info(f"Successfully loaded {success_count}/{len(points)} chunks from {processed_files} files")
         return success_count
     
+   
+        return success_count
+
+
+
     except Exception as e:
-        print(f"Критическая ошибка: {str(e)}")
+        logging.error(f"Critical error in ingest: {str(e)}", exc_info=True)
         return 0
 
 if __name__ == "__main__":
     loaded_chunks = main()
     if loaded_chunks > 0:
-        print("Данные успешно загружены в Qdrant")
+        logging.info(f"Data loaded successfully: {loaded_chunks} chunks")
     else:
-        print("Не удалось загрузить данные")
+        logging.error("Failed to load data")

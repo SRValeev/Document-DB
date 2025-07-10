@@ -1,30 +1,30 @@
+#llm_client.py
 import httpx
 import logging
-from typing import Dict, Optional
 from utils.helpers import load_config
 
 class LLMClient:
     def __init__(self):
         self.config = load_config().get('llm', {})
+        self.logger = logging.getLogger(__name__)
         self.client = httpx.AsyncClient(timeout=60.0)
         self._validate_config()
 
     def _validate_config(self):
-        """Проверка обязательных параметров конфигурации"""
         required_keys = ['api_url', 'model']
         for key in required_keys:
             if key not in self.config:
-                raise ValueError(f"Missing required LLM config key: {key}")
+                error_msg = f"Missing required LLM config key: {key}"
+                self.logger.error(error_msg)
+                raise ValueError(error_msg)
 
-    async def generate_response(self, prompt: str, context: str = "", **kwargs) -> str:
-        """Генерация ответа с использованием LLM"""
+    async def generate_response(self, prompt: str, context: str = "", **kwargs):
         try:
             messages = [
                 {"role": "system", "content": self.config.get('system_prompt', '')},
-                {"role": "user", "content": f"{context}\n\n{prompt}"}
+                {"role": "user", "content": f"{context}\n\n{prompt}" if context else prompt}
             ]
             
-            # Базовые параметры из конфига
             payload = {
                 "model": self.config['model'],
                 "messages": messages,
@@ -40,14 +40,21 @@ class LLMClient:
                 json=payload
             )
             response.raise_for_status()
-            return response.json()['choices'][0]['message']['content']
+            
+            result = response.json()
+            self.logger.info("LLM response generated successfully")
+            return result['choices'][0]['message']['content']
+            
         except Exception as e:
-            logging.error(f"LLM request failed: {str(e)}")
+            self.logger.error(f"LLM request failed: {str(e)}", exc_info=True)
             return "Не удалось получить ответ от LLM"
 
     async def close(self):
-        """Закрытие клиента"""
-        await self.client.aclose()
+        try:
+            await self.client.aclose()
+            self.logger.info("LLM client closed")
+        except Exception as e:
+            self.logger.error(f"Error closing LLM client: {str(e)}")
 
 # Синглтон-экземпляр
 llm_client = LLMClient()

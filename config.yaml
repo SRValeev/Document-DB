@@ -1,54 +1,68 @@
-processing: 
-  chunk_size: 768  # Размер фрагмента текста в символах максимальный для модели paraphrase-multilingual-mpnet-base-v2
-  chunk_overlap: 200  # Перекрытие между фрагментами для сохранения контекста
+# Основные настройки обработки
+processing:
+  chunk_size: 768                # Оптимальный размер чанка для multilingual моделей
+  chunk_overlap: 200             # Перекрытие для сохранения контекста
   embedding_model: "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
-  # embedding_model: "intfloat/multilingual-e5-large"  # Более тяжелая и точная может chunk_size 1024
-  spacy_model: "ru_core_news_md"
-  device: "cpu"
-  min_similarity: 0.70
-  num_workers: 4  # Уменьшено для экономии памяти
-  use_ocr: false  # По умолчанию выключено
-  tesseract_path: ""  # Путь к Tesseract OCR
+  spacy_model: "ru_core_news_md" # Модель для NLP обработки
+  min_similarity: 0.72           # Порог схожести для поиска (0-1)
+  num_workers: 4                 # Потоки для параллельной обработки
+  use_ocr: false                 # Включение OCR для изображений
+  device: "cpu"                  # cpu/cuda
 
 # Настройки производительности
 performance:
-  embedding_batch_size: 8  # Размер батча для векторизации
-  qdrant_batch_size: 50    # Размер батча для загрузки в Qdrant
-  max_threads: 2           # Максимальное число потоков
-  device: "cpu"            # Устройство для обработки (cpu/cuda)
+  embedding_batch_size: 32       # Размер батча для векторизации
+  qdrant_batch_size: 100         # Размер батча для загрузки в Qdrant
+  max_threads: 4                 # Максимальное число потоков
+  max_file_size_mb: 50           # Максимальный размер файла (MB)
 
+# Настройки Qdrant
 qdrant:
   host: "localhost"
   port: 6333
   collection_name: "document_chunks"
-  vector_size: 768
+  vector_size: 768               # Размерность вектора модели
   search_params:
-    limit: 5  # Количество возвращаемых результатов поиска
-    with_payload: true  # Включать ли метаданные в результаты
-    with_vectors: false  # Включать ли сами векторы в результаты
-    score_threshold: 0.7  # Минимальный порог схожести (0-1)
+    limit: 5                     # Лимит результатов поиска
+    with_payload: true           # Включать метаданные
+    with_vectors: false          # Не возвращать векторы
+    exact_search: false          # Использовать приближенный поиск
 
+# Настройки контекста (новый раздел)
+context:
+  max_chunks: 5                  # Максимальное число чанков в контексте
+  diversity_factor: 0.4          # Коэффициент разнообразия (0-1)
+  min_relevance: 0.65            # Минимальная релевантность
+  max_duplicate_distance: 0.2    # Макс. расстояние для дубликатов
+  mmr_enabled: true              # Включить MMR для разнообразия
+  clean_stopwords: true          # Очистка от стоп-слов
+
+# Пути к директориям
 paths:
-  data_dir: "data"
-  output_dir: "processed"
-  images_dir: "processed/images"
-  processed_files: "processed/processed_files.json"
-  log_file: "processing.log"
-  tempdir: "temp"
+  data_dir: "data"               # Исходные файлы
+  output_dir: "processed"        # Обработанные данные
+  images_dir: "processed/images" # Директория для изображений
+  log_file: "log/stdout.log"         # Файл логов
+  tempdir: "temp"                # Временные файлы
+  protected_files: ["global_index.json"]  # Файлы, которые не будут удаляться
 
+# Настройки LLM (опционально)
 llm:
-  api_url: "http://localhost:1234/v1"  # URL LM Studio API
-  model: "google/gemma-3-4b"  # Название модели в LM Studio
-  context_window: 8000
-  
+  api_url: "http://localhost:1234/v1"
+  model: "google/gemma-3-1b"          # Имя модели в LM Studio
+  context_window: 8000          # Размер контекстного окна
   generation_params:
-    temperature: 0.3  # Контроль случайности (меньше = более предсказуемо)
-    max_tokens: 1000  # Максимальная длина ответа в токенах
-    top_p: 0.9  # Ограничение на кумулятивную вероятность (0.9 - хороший баланс)
-    frequency_penalty: 0.2  # Штраф за частые слова (0-1)
-    presence_penalty: 0.2  # Штраф за повторения (0-1)
-
+    temperature: 0.3
+    max_tokens: 1000
+    top_p: 0.9
+    frequency_penalty: 0.2
+    presence_penalty: 0.2
   system_prompt: |
-    Ты - помощник для работы с документами. Отвечай на вопросы, используя предоставленный контекст.
-    Будь точным и лаконичным. Если ответа нет в контексте, скажи об этом.
-    Отвечай на языке вопроса.
+    Ты - ассистент для работы с документами. Отвечай точно и по делу.
+    Используй только предоставленный контекст. Если ответа нет - скажи об этом.
+
+# Настройки OCR (только при use_ocr: true)
+ocr:
+  languages: ["rus", "eng"]     # Языки для распознавания
+  dpi: 300                      # Разрешение обработки
+  timeout: 30                   # Таймаут в секундах
