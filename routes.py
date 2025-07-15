@@ -74,8 +74,8 @@ async def get_detailed_stats() -> Dict:
         
         if file_id:
             doc_stats[file_id]['name'] = metadata.get('source', file_id)
-            doc_stats[file_id]['chunks'] += 1
-            doc_stats[file_id]['size'] += len(text)
+            doc_stats[file_id]['chunks'] = 1
+            doc_stats[file_id]['size'] = len(text)
             doc_stats[file_id]['types'].add(metadata.get('type', 'unknown'))
             doc_stats[file_id]['pages'].add(metadata.get('page', 0))
             

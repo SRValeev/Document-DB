@@ -3,7 +3,7 @@ Main FastAPI application with enhanced architecture and security
 """
 import time
 import uuid
-from contextual import asynccontextmanager
+from contextlib import asynccontextmanager
 from typing import AsyncIterator
 import asyncio
 

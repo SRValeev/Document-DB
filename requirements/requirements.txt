@@ -1,36 +1,79 @@
-### Основные зависимости FastAPI
-fastapi>=0.95.2            # Веб-фреймворк (основа проекта)
-uvicorn>=0.22.0            # ASGI-сервер для запуска
-python-multipart>=0.0.6    # Обработка загрузки файлов
-Jinja2>=3.1.2              # Шаблонизация HTML
+# Requirements for Python 3.12+ compatibility
+# ============================================
+# Use this file for Python 3.12+ installations
 
-### Работа с векторами и БД
-qdrant-client>=1.6.4       # Клиент для векторной БД Qdrant
-sentence-transformers>=2.2.2  # Модели эмбеддингов (paraphrase-multilingual)
-numpy>=1.24.3              # Работа с векторами
-scipy>=1.10.1              # Косинусная мера для MMR
+# FastAPI Core - Python 3.12 compatible
+fastapi>=0.104.0,<0.110.0
+uvicorn[standard]>=0.24.0,<0.30.0
+pydantic>=2.4.0,<3.0.0
+pydantic-settings>=2.0.0,<3.0.0
 
-### Обработка документов
-pymupdf>=1.23.17           # Парсинг PDF (Fitz)
-python-docx>=1.1.0         # Чтение Word-документов
-pytesseract>=0.3.10        # OCR (опционально)
-Pillow>=10.0.1             # Обработка изображений для OCR
+# Authentication & Security
+python-jose[cryptography]>=3.3.0,<4.0.0
+passlib[bcrypt]>=1.7.4,<2.0.0
+python-multipart>=0.0.6,<1.0.0
 
-### NLP и обработка текста
-spacy>=3.7.2,<4.0.0        # NLP обработка
-# NOTE: SpaCy models are installed separately, see spacy_models.txt
-nltk>=3.8.1,<4.0.0         # Стоп-слова и токенизация
-sentencepiece>=0.1.99,<1.0.0  # Токенизация для моделей
+# Database & Vector Store
+qdrant-client>=1.7.0,<2.0.0
+redis>=5.0.0,<6.0.0
 
-### Асинхронные HTTP-запросы
-httpx>=0.24.1              # Асинхронные запросы к LLM API
+# Document Processing
+pymupdf>=1.23.0,<2.0.0
+python-docx>=1.1.0,<2.0.0
+aiofiles>=23.2.1,<24.0.0
 
-### Вспомогательные утилиты
-tqdm>=4.66.1               # Прогресс-бары
-PyYAML>=6.0.1              # Чтение конфигов
-pandas>=1.5.3              # Анализ статистики
-python-dateutil>=2.8.2     # Работа с датами
+# NLP & ML - Python 3.12 compatible
+sentence-transformers>=2.2.2,<3.0.0
+spacy>=3.7.0,<4.0.0
+nltk>=3.8.1,<4.0.0
 
-### Дополнительные оптимизации
-scikit-learn>=1.3.0        # Косинусная схожесть (можно заменить на scipy)
-click>=8.1.3               # CLI-утилиты (для скриптов)
+# PyTorch ecosystem - Python 3.12 compatible
+torch>=2.1.0,<3.0.0
+torchvision>=0.16.0,<1.0.0
+torchaudio>=2.1.0,<3.0.0
+
+# Transformers ecosystem
+transformers>=4.30.0,<5.0.0
+tokenizers>=0.15.0,<1.0.0
+safetensors>=0.4.0,<1.0.0
+accelerate>=0.20.0,<1.0.0
+
+# Scientific computing - NumPy 2.0 compatible
+numpy>=1.24.0,<3.0.0
+scipy>=1.11.0,<2.0.0
+scikit-learn>=1.3.0,<2.0.0
+pandas>=2.0.0,<3.0.0
+
+# Image processing
+Pillow>=10.0.0,<11.0.0
+opencv-python>=4.8.0,<5.0.0
+
+# OCR (optional)
+pytesseract>=0.3.10,<1.0.0
+
+# HTTP Clients
+httpx>=0.25.0,<1.0.0
+requests>=2.31.0,<3.0.0
+
+# Utilities
+pyyaml>=6.0.1,<7.0.0
+python-dateutil>=2.8.2,<3.0.0
+tqdm>=4.66.0,<5.0.0
+click>=8.1.0,<9.0.0
+typer>=0.9.0,<1.0.0
+
+# Development & Testing (optional)
+pytest>=7.4.0,<9.0.0
+pytest-asyncio>=0.21.0,<1.0.0
+pytest-cov>=4.1.0,<5.0.0
+black>=23.0.0,<25.0.0
+isort>=5.12.0,<6.0.0
+flake8>=6.0.0,<8.0.0
+
+# Production
+gunicorn>=21.2.0,<23.0.0
+
+# NOTE: SpaCy models are not PyPI packages
+# Install separately using:
+# python -m spacy download ru_core_news_lg
+# Or see spacy_models.txt for offline installation
