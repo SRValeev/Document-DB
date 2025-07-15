@@ -1,0 +1,9 @@
+# Additional requirements for building offline distribution
+huggingface_hub>=0.19.0
+requests>=2.31.0
+spacy>=3.7.0
+
+# Heavy models for offline distribution
+# Note: These will be downloaded during build process
+# intfloat/multilingual-e5-large (2.24GB)
+# ru_core_news_lg (560MB)
