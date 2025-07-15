@@ -63,7 +63,7 @@ echo.
 echo 🔨 Step 1: Building main distribution package...
 echo [%date% %time%] Starting main distribution build >> %BUILD_LOG%
 
-python scripts\build_offline_distribution.py --output %OUTPUT_DIR% >> %BUILD_LOG% 2>&1
+python "scripts\build_offline_distribution.py" --output "%OUTPUT_DIR%" >> "%BUILD_LOG%" 2>&1
 if %ERRORLEVEL% neq 0 (
     echo ❌ Failed to build main distribution
     echo [%date% %time%] ERROR: Main distribution build failed >> %BUILD_LOG%
@@ -81,7 +81,7 @@ echo [%date% %time%] Downloading Qdrant >> %BUILD_LOG%
 set QDRANT_DIR=%OUTPUT_DIR%\build\rag-assistant-offline\tools
 if not exist %QDRANT_DIR% mkdir %QDRANT_DIR%
 
-powershell -ExecutionPolicy Bypass -File scripts\download_qdrant_offline.ps1 -OutputDir %QDRANT_DIR% >> %BUILD_LOG% 2>&1
+powershell -ExecutionPolicy Bypass -File "scripts\download_qdrant_offline.ps1" -OutputDir "%QDRANT_DIR%" >> "%BUILD_LOG%" 2>&1
 if %ERRORLEVEL% neq 0 (
     echo ❌ Failed to download Qdrant
     echo [%date% %time%] ERROR: Qdrant download failed >> %BUILD_LOG%

@@ -176,9 +176,14 @@ class OfflineSettings(PydanticBaseSettings):
         super().__init__(**kwargs)
         # Ensure directories exist for Windows deployment
         import os
-        for dir_path in [self.data_dir, self.upload_dir, self.processed_dir, 
-                        self.logs_dir, self.temp_dir, self.models_dir]:
-            os.makedirs(dir_path, exist_ok=True)
+        try:
+            for dir_path in [self.data_dir, self.upload_dir, self.processed_dir, 
+                            self.logs_dir, self.temp_dir, self.models_dir]:
+                os.makedirs(dir_path, exist_ok=True)
+        except PermissionError as e:
+            raise RuntimeError(f"Failed to create directories. Please run as Administrator: {e}")
+        except Exception as e:
+            raise RuntimeError(f"Failed to create directories: {e}")
 
 
 # Global offline settings instance
