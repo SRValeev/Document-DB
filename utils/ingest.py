@@ -44,17 +44,18 @@ def main() -> int:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     chunks = json.load(f)
                     for chunk in chunks:
-                        if 'embedding' in chunk:
-                            vector = chunk.pop('embedding')
-                            points.append(PointStruct(
-                                id=chunk['id'],
-                                vector=vector,
-                                payload={
-                                    "text": chunk['text'],
-                                    "metadata": chunk['metadata'],
-                                    "vector": vector  # Сохраняем для MMR
-                                }
-                            ))
+                        if 'embedding' in chunk and chunk['embedding'] is not None:
+                            # Проверка на NaN
+                            if not any(np.isnan(x) for x in chunk['embedding']):
+                                points.append(PointStruct(
+                                    id=chunk['id'],
+                                    vector=chunk['embedding'],
+                                    payload={
+                                        "text": chunk['text'],
+                                        "metadata": chunk['metadata'],
+                                        "vector": chunk['embedding']
+                                    }
+                                ))
                     processed_files += 1
         
         if not points:

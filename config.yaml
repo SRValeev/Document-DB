@@ -36,6 +36,20 @@ processing:
   device: "cpu"          # cpu/cuda/mps
   max_file_size_mb: 50   # Макс. размер файла
 
+  regex_patterns:
+    header: '^(Глава|Раздел|Часть|Параграф)\s+\d+[.:]?\s+'
+    subheader: '^\d+\.\d+\.\s+'
+    
+  supported_formats:
+      - ".pdf"
+      - ".docx"
+      - ".doc"
+      - ".pptx"
+      - ".xlsx"
+      - ".txt"
+    
+  default_language: "ru"
+
 # ======================
 # Настройки контекста
 # ======================

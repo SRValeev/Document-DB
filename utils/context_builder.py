@@ -90,26 +90,37 @@ class ContextBuilder:
         return "\n".join(context_parts) if context_parts else ""
 
     def _mmr_selection(self, query_embedding: List[float], results: List) -> List:
-        """
-        Maximal Marginal Relevance выборка результатов
-        
-        Args:
-            query_embedding: Вектор запроса
-            results: Список результатов поиска
-            
-        Returns:
-            Отсортированный список результатов с учетом релевантности и разнообразия
-        """
+        """Maximal Marginal Relevance выборка результатов"""
         if len(results) <= 1:
             return results
             
-        # Получаем векторы документов
-        doc_vectors = [r.vector for r in results if hasattr(r, 'vector')]
+        # Получаем векторы документов, фильтруя NaN
+        doc_vectors = []
+        valid_results = []
+        
+        for r in results:
+            if hasattr(r, 'vector') and r.vector is not None:
+                # Проверяем на NaN
+                if not any(np.isnan(x) for x in r.vector):
+                    doc_vectors.append(r.vector)
+                    valid_results.append(r)
+        
         if not doc_vectors:
             return results[:self.max_chunks]
         
+        # Преобразуем в numpy array и проверяем форму
+        doc_vectors = np.array(doc_vectors)
+        query_embedding = np.array(query_embedding)
+        
+        # Проверяем размерности
+        if query_embedding.ndim == 1:
+            query_embedding = query_embedding.reshape(1, -1)
+        
+        if doc_vectors.ndim == 1:
+            doc_vectors = doc_vectors.reshape(-1, 1)
+        
         # Сходство с запросом
-        query_sim = cosine_similarity([query_embedding], doc_vectors)[0]
+        query_sim = cosine_similarity(query_embedding, doc_vectors)[0]
         
         # Попарное сходство между документами
         doc_sim = cosine_similarity(doc_vectors)
