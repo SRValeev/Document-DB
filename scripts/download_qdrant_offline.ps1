@@ -8,7 +8,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "📥 Downloading Qdrant $QdrantVersion for offline distribution..." -ForegroundColor Green
+Write-Host "[>>] Downloading Qdrant $QdrantVersion for offline distribution..." -ForegroundColor Green
 
 # Create output directory
 $ToolsDir = Join-Path $OutputDir "qdrant"
@@ -24,14 +24,29 @@ try {
     # Download Windows binary
     Write-Host "🔄 Downloading Qdrant Windows binary..."
     $ZipPath = Join-Path $ToolsDir "qdrant-windows.zip"
-    Invoke-WebRequest -Uri $QdrantUrls["windows"] -OutFile $ZipPath -UseBasicParsing
+    
+    # Add progress and timeout for download
+    $ProgressPreference = 'SilentlyContinue'
+    Invoke-WebRequest -Uri $QdrantUrls["windows"] -OutFile $ZipPath -UseBasicParsing -TimeoutSec 300
+    
+    if (-not (Test-Path $ZipPath)) {
+        throw "Failed to download Qdrant binary"
+    }
+    
+    Write-Host "  ✓ Downloaded Qdrant binary ($('{0:N1}' -f ((Get-Item $ZipPath).Length / 1MB)) MB)" -ForegroundColor Green
     
     # Extract to subdirectory
     $ExtractPath = Join-Path $ToolsDir "windows"
     Expand-Archive -Path $ZipPath -DestinationPath $ExtractPath -Force
     Remove-Item $ZipPath
     
-    Write-Host "  ✓ Downloaded and extracted Qdrant binary" -ForegroundColor Green
+    # Verify extraction
+    $QdrantExe = Join-Path $ExtractPath "qdrant.exe"
+    if (-not (Test-Path $QdrantExe)) {
+        throw "Qdrant executable not found after extraction"
+    }
+    
+    Write-Host "  ✓ Extracted Qdrant binary" -ForegroundColor Green
     
     # Create Qdrant configuration
     $QdrantConfig = @"
@@ -84,11 +99,11 @@ pause
     
     $QdrantInfo | ConvertTo-Json -Depth 3 | Set-Content (Join-Path $ToolsDir "qdrant_info.json")
     
-    Write-Host "✅ Qdrant offline package prepared successfully!" -ForegroundColor Green
-    Write-Host "📍 Location: $ToolsDir" -ForegroundColor Yellow
-    Write-Host "🚀 Start with: start_qdrant.bat" -ForegroundColor Yellow
+    Write-Host "[SUCCESS] Qdrant offline package prepared successfully!" -ForegroundColor Green
+    Write-Host "[*] Location: $ToolsDir" -ForegroundColor Yellow
+    Write-Host "[*] Start with: start_qdrant.bat" -ForegroundColor Yellow
     
 } catch {
-    Write-Error "❌ Failed to download Qdrant: $_"
+    Write-Error "[ERROR] Failed to download Qdrant: $_"
     exit 1
 }

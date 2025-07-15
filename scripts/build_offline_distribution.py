@@ -98,16 +98,14 @@ class OfflineDistributionBuilder:
         
         print(f"📋 Found {len(offline_requirements)} packages to download")
         
-        # Download wheels
+        # Download wheels with dependencies
         cmd = [
             sys.executable, "-m", "pip", "download",
             "--dest", str(wheels_dir),
             "--platform", OFFLINE_CONFIG["target_platform"],
             "--python-version", OFFLINE_CONFIG["python_version"],
-            "--abi", "none",
-            "--implementation", "cp",
-            "--prefer-binary",
-            "--no-deps"  # We'll handle dependencies separately
+            "--only-binary=:all:",
+            "--prefer-binary"
         ] + offline_requirements
         
         try:
@@ -145,12 +143,13 @@ class OfflineDistributionBuilder:
             print(f"  ✓ Downloaded embedding model to {model_dir}")
             
             # Create model info file
+            import datetime
             model_info = {
                 "model_name": OFFLINE_CONFIG['models']['embedding_model'],
                 "model_type": "sentence-transformer",
                 "vector_size": 1024,  # e5-large has 1024 dimensions
                 "local_path": "models/embedding",
-                "downloaded_at": str(Path().absolute())
+                "downloaded_at": datetime.datetime.now().isoformat()
             }
             
             with open(model_dir / "model_info.json", "w", encoding="utf-8") as f:
@@ -164,30 +163,48 @@ class OfflineDistributionBuilder:
     
     def download_spacy_model(self):
         """Download SpaCy model"""
-        print(f"\n📝 Downloading SpaCy model: {OFFLINE_CONFIG['models']['spacy_model']}")
+        print(f"\n[#] Downloading SpaCy model: {OFFLINE_CONFIG['models']['spacy_model']}")
         print(f"   Size: ~{OFFLINE_CONFIG['models']['spacy_model_size']}")
         
         spacy_dir = self.package_dir / "models" / "spacy"
         
         try:
-            # Download SpaCy model using pip
-            cmd = [
-                sys.executable, "-m", "pip", "download",
-                "--dest", str(spacy_dir),
-                f"https://github.com/explosion/spacy-models/releases/download/{OFFLINE_CONFIG['models']['spacy_model']}-3.7.0/{OFFLINE_CONFIG['models']['spacy_model']}-3.7.0.tar.gz"
-            ]
+            # SpaCy model direct download URL
+            model_name = OFFLINE_CONFIG['models']['spacy_model']
+            model_version = "3.7.0"
+            download_url = f"https://github.com/explosion/spacy-models/releases/download/{model_name}-{model_version}/{model_name}-{model_version}.tar.gz"
             
-            subprocess.run(cmd, check=True)
-            print(f"  ✓ Downloaded SpaCy model to {spacy_dir}")
+            print(f"  Downloading from: {download_url}")
+            
+            # Download SpaCy model using requests
+            import requests
+            response = requests.get(download_url, stream=True, timeout=300)
+            response.raise_for_status()
+            
+            model_file = spacy_dir / f"{model_name}-{model_version}.tar.gz"
+            
+            # Save the model file
+            with open(model_file, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+            
+            print(f"  [+] Downloaded SpaCy model to {model_file}")
+            print(f"  [+] File size: {model_file.stat().st_size / 1024 / 1024:.1f} MB")
             
             # Create model info
+            import datetime
             spacy_info = {
-                "model_name": OFFLINE_CONFIG['models']['spacy_model'],
+                "model_name": model_name,
+                "model_version": model_version,
                 "model_type": "spacy",
                 "language": "ru",
                 "components": ["tok2vec", "tagger", "parser", "senter", "ner", "attribute_ruler", "lemmatizer"],
                 "local_path": "models/spacy",
-                "downloaded_at": str(Path().absolute())
+                "file_name": f"{model_name}-{model_version}.tar.gz",
+                "download_url": download_url,
+                "downloaded_at": datetime.datetime.now().isoformat(),
+                "installation_command": f"pip install {model_file.name}"
             }
             
             with open(spacy_dir / "spacy_info.json", "w", encoding="utf-8") as f:
@@ -195,8 +212,11 @@ class OfflineDistributionBuilder:
             
             return True
             
+        except requests.RequestException as e:
+            print(f"  [ERROR] Network error downloading SpaCy model: {e}")
+            return False
         except Exception as e:
-            print(f"  ❌ Error downloading SpaCy model: {e}")
+            print(f"  [ERROR] Error downloading SpaCy model: {e}")
             return False
     
     def copy_application_code(self):
@@ -337,7 +357,7 @@ param(
 $ErrorActionPreference = "Stop"
 $VerbosePreference = if ($Verbose) { "Continue" } else { "SilentlyContinue" }
 
-Write-Host "🚀 RAG Document Assistant v2.0 Offline Installer" -ForegroundColor Green
+Write-Host "[*] RAG Document Assistant v2.0 Offline Installer" -ForegroundColor Green
 Write-Host "📍 Installation path: $InstallPath" -ForegroundColor Yellow
 
 # Check if running as Administrator
@@ -379,7 +399,7 @@ try {
 }
 
 # Create virtual environment
-Write-Host "🔧 Creating virtual environment..."
+Write-Host "[#] Creating virtual environment..."
 $VenvPath = Join-Path $InstallPath "venv"
 python -m venv $VenvPath
 if ($LASTEXITCODE -ne 0) {
@@ -387,76 +407,100 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# Activate virtual environment
-$ActivateScript = Join-Path $VenvPath "Scripts\\Activate.ps1"
-& $ActivateScript
-
-# Install packages from wheels
-Write-Host "📦 Installing Python packages..."
+# Install packages from wheels (no need to activate venv, use full path)
+Write-Host "[#] Installing Python packages..."
 $WheelsPath = Join-Path $PSScriptRoot "..\\wheels"
-python -m pip install --upgrade pip
-python -m pip install --find-links $WheelsPath --no-index --force-reinstall (Get-ChildItem $WheelsPath -Filter "*.whl" | ForEach-Object { $_.Name })
+$PythonExe = Join-Path $VenvPath "Scripts\\python.exe"
+$PipExe = Join-Path $VenvPath "Scripts\\pip.exe"
 
+& $PipExe install --upgrade pip
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "❌ Failed to upgrade pip"
+    exit 1
+}
+
+# Install all wheels
+& $PipExe install --find-links $WheelsPath --no-index --force-reinstall --no-deps (Get-ChildItem $WheelsPath -Filter "*.whl" | ForEach-Object { $_.FullName })
 if ($LASTEXITCODE -ne 0) {
     Write-Error "❌ Failed to install Python packages"
     exit 1
 }
 
 # Install SpaCy model
-Write-Host "📝 Installing SpaCy model..."
+Write-Host "[#] Installing SpaCy model..."
 $SpacyModelPath = Join-Path $PSScriptRoot "..\\models\\spacy"
 $SpacyModel = Get-ChildItem $SpacyModelPath -Filter "*.tar.gz" | Select-Object -First 1
 if ($SpacyModel) {
-    python -m pip install $SpacyModel.FullName
-    Write-Host "  ✓ Installed SpaCy model: ru_core_news_lg" -ForegroundColor Green
+    & $PipExe install $SpacyModel.FullName
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "  ✓ Installed SpaCy model: ru_core_news_lg" -ForegroundColor Green
+    } else {
+        Write-Warning "⚠️  Failed to install SpaCy model"
+    }
 } else {
     Write-Warning "⚠️  SpaCy model not found"
 }
 
 # Copy application code
-Write-Host "📄 Copying application code..."
+Write-Host "[#] Copying application code..."
 $SourceApp = Join-Path $PSScriptRoot "..\\app"
 Copy-Item -Recurse -Force "$SourceApp\\*" $AppPath
 
 # Copy and configure environment
-Write-Host "⚙️  Configuring environment..."
+Write-Host "[#] Configuring environment..."
 $ConfigPath = Join-Path $PSScriptRoot "..\\config"
 Copy-Item "$ConfigPath\\.env.offline" "$InstallPath\\.env"
 
-# Generate secret key
-$SecretKey = [System.Web.Security.Membership]::GeneratePassword(64, 16)
+# Generate secret key (fallback method if System.Web.Security is not available)
+try {
+    $SecretKey = [System.Web.Security.Membership]::GeneratePassword(64, 16)
+} catch {
+    # Fallback: generate random string using .NET methods
+    $SecretKey = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 64 | ForEach {[char]$_})
+}
+
 $EnvContent = Get-Content "$InstallPath\\.env" -Raw
 $EnvContent = $EnvContent -replace "GENERATE_DURING_INSTALL", $SecretKey
 Set-Content "$InstallPath\\.env" $EnvContent
 
 # Create service script
-Write-Host "🔧 Creating service files..."
+Write-Host "[#] Creating service files..."
 $ServiceScript = @"
 @echo off
-cd /d "$InstallPath"
-call venv\\Scripts\\activate.bat
+cd /d `"$InstallPath`"
+call `"$InstallPath\venv\Scripts\activate.bat`"
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+pause
 "@
 
-Set-Content "$InstallPath\\start_service.bat" $ServiceScript
+Set-Content "$InstallPath\start_service.bat" $ServiceScript
 
 # Create Windows Service (optional)
-$NSSMPath = "C:\\nssm\\nssm.exe"
+$NSSMPath = "C:\nssm\nssm.exe"
 if (Test-Path $NSSMPath) {
-    Write-Host "🔧 Installing Windows Service..."
-    & $NSSMPath install "RAGAssistant" "$InstallPath\\start_service.bat"
-    & $NSSMPath set "RAGAssistant" Description "RAG Document Assistant v2.0"
-    & $NSSMPath set "RAGAssistant" Start SERVICE_AUTO_START
-    Write-Host "  ✓ Service installed (use 'net start RAGAssistant' to start)" -ForegroundColor Green
+    Write-Host "[#] Installing Windows Service..."
+    try {
+        & $NSSMPath install "RAGAssistant" "$InstallPath\start_service.bat"
+        & $NSSMPath set "RAGAssistant" Description "RAG Document Assistant v2.0"
+        & $NSSMPath set "RAGAssistant" Start SERVICE_AUTO_START
+        & $NSSMPath set "RAGAssistant" AppDirectory "$InstallPath"
+        Write-Host "  ✓ Service installed (use 'net start RAGAssistant' to start)" -ForegroundColor Green
+    } catch {
+        Write-Warning "⚠️  Failed to install Windows Service: $_"
+    }
+} else {
+    Write-Host "  [i] NSSM not found at C:\nssm\nssm.exe - skipping Windows Service installation" -ForegroundColor Yellow
+    Write-Host "  [i] To install as service later, download NSSM and run:" -ForegroundColor Yellow
+    Write-Host "     nssm install RAGAssistant `"$InstallPath\start_service.bat`"" -ForegroundColor Yellow
 }
 
 # Installation summary
 Write-Host ""
-Write-Host "✅ Installation completed successfully!" -ForegroundColor Green
-Write-Host "📍 Installation path: $InstallPath" -ForegroundColor Yellow
-Write-Host "🌐 To start manually: cd '$InstallPath' && start_service.bat" -ForegroundColor Yellow
-Write-Host "🔧 Service name: RAGAssistant (if NSSM available)" -ForegroundColor Yellow
-Write-Host "📖 Access at: http://localhost:8000" -ForegroundColor Yellow
+Write-Host "[SUCCESS] Installation completed successfully!" -ForegroundColor Green
+Write-Host "[*] Installation path: $InstallPath" -ForegroundColor Yellow
+Write-Host "[*] To start manually: cd '$InstallPath' && start_service.bat" -ForegroundColor Yellow
+Write-Host "[*] Service name: RAGAssistant (if NSSM available)" -ForegroundColor Yellow
+Write-Host "[*] Access at: http://localhost:8000" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Cyan
 Write-Host "1. Start Qdrant vector database" -ForegroundColor White

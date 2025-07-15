@@ -17,10 +17,10 @@ pytesseract>=0.3.10        # OCR (опционально)
 Pillow>=10.0.1             # Обработка изображений для OCR
 
 ### NLP и обработка текста
-spacy>=3.7.2               # NLP обработка
-ru_core_news_md            # Модель для русского языка (python -m spacy download)
-nltk>=3.8.1                # Стоп-слова и токенизация
-sentencepiece>=0.1.99      # Токенизация для моделей
+spacy>=3.7.2,<4.0.0        # NLP обработка
+# NOTE: SpaCy models are installed separately, see spacy_models.txt
+nltk>=3.8.1,<4.0.0         # Стоп-слова и токенизация
+sentencepiece>=0.1.99,<1.0.0  # Токенизация для моделей
 
 ### Асинхронные HTTP-запросы
 httpx>=0.24.1              # Асинхронные запросы к LLM API

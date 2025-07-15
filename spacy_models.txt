@@ -1,0 +1,29 @@
+# SpaCy Models Installation Guide
+# =====================================
+# SpaCy models are NOT regular PyPI packages and must be installed separately
+
+# ONLINE INSTALLATION (with internet access):
+# python -m spacy download ru_core_news_md
+# python -m spacy download ru_core_news_lg
+
+# OFFLINE INSTALLATION:
+# 1. Download models manually from GitHub releases:
+#    https://github.com/explosion/spacy-models/releases/
+
+# Model Information:
+# ------------------
+# ru_core_news_md (Medium) - ~50MB
+#   - Direct link: https://github.com/explosion/spacy-models/releases/download/ru_core_news_md-3.7.0/ru_core_news_md-3.7.0.tar.gz
+#   - Install: pip install https://github.com/explosion/spacy-models/releases/download/ru_core_news_md-3.7.0/ru_core_news_md-3.7.0.tar.gz
+
+# ru_core_news_lg (Large) - ~560MB - RECOMMENDED FOR OFFLINE DISTRIBUTION
+#   - Direct link: https://github.com/explosion/spacy-models/releases/download/ru_core_news_lg-3.7.0/ru_core_news_lg-3.7.0.tar.gz
+#   - Install: pip install https://github.com/explosion/spacy-models/releases/download/ru_core_news_lg-3.7.0/ru_core_news_lg-3.7.0.tar.gz
+
+# CONFIGURATION:
+# For offline distribution, use ru_core_news_lg in config:
+# processing:
+#   spacy_model: "ru_core_news_lg"
+
+# VERIFICATION:
+# python -c "import spacy; nlp = spacy.load('ru_core_news_lg'); print('Model loaded successfully')"
