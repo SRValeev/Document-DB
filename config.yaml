@@ -4,53 +4,70 @@
 system:
   name: "RAG Document Assistant"
   version: "1.0"
-  debug: false  # Режим отладки (логирование в stdout)
-
-# Настройки производительности
-performance:
-  embedding_batch_size: 32       # Размер батча для векторизации
-  qdrant_batch_size: 100         # Размер батча для загрузки в Qdrant
-  max_threads: 4                 # Максимальное число потоков
-
-
+  debug: false
+  log_level: "INFO"  # DEBUG/INFO/WARNING/ERROR/CRITICAL
 
 # ======================
-# Настройки обработки документов
+# Настройки производительности
+# ======================
+performance:
+  embedding_batch_size: 32
+  qdrant_batch_size: 100
+  max_threads: 4
+  file_processing_timeout: 300  # seconds
+
+# ======================
+# Обработка документов
 # ======================
 processing:
-  # Настройки чанкинга
-  chunk_size: 768        # Оптимальный размер чанка в токенах
-  chunk_overlap: 200     # Перекрытие между чанками
-  min_chunk_size: 300    # Минимальный размер чанка
-  smart_chunking: true   # Использовать NLP для разделения
+  # Размеры чанков
+  chunk_size: 768
+  chunk_overlap: 200
+  min_chunk_size: 300
+  smart_chunking: true
   
   # Модели
   embedding_model: "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
   spacy_model: "ru_core_news_md"
+  default_language: "ru"
   
   # Пороги
-  min_similarity: 0.65   # Минимальная релевантность для поиска (0-1)
+  min_similarity: 0.65
+  max_file_size_mb: 50
   
-  # Ресурсы
-  num_workers: 4         # Количество потоков обработки
-  device: "cpu"          # cpu/cuda/mps
-  max_file_size_mb: 50   # Макс. размер файла
+  # Параметры потоков
+  num_workers: 4
+  device: "cpu"  # cpu/cuda/mps
+  
+  # Регулярные выражения
+processing:
+  regex_patterns:
+    header: '^(Глава|Раздел|Часть|Параграф)\s+\d+[.:]?\s+'  # Одинарные кавычки
+    subheader: '^\d+\.\d+\.\s+'
+  
+  # Поддерживаемые форматы
+  supported_formats:
+    - ".pdf"
+    - ".docx"
+    - ".doc"
+    - ".pptx"
+    - ".xlsx"
+    - ".txt"
 
 # ======================
 # Настройки контекста
 # ======================
 context:
-  max_chunks: 5          # Макс. число чанков в контексте
-  min_relevance: 0.40    # Минимальная релевантность для включения
-  mmr_enabled: true      # Использовать Maximal Marginal Relevance
-  diversity_factor: 0.3  # Коэффициент разнообразия (0-1)
-  clean_stopwords: true  # Очищать от стоп-слов
+  max_chunks: 5
+  min_relevance: 0.40
+  mmr_enabled: true
+  diversity_factor: 0.3
+  clean_stopwords: true
   
-  # Форматирование
-  show_sources: true     # Показывать источники в ответе
+  # Форматирование вывода
+  show_sources: true
   show_page_numbers: true
   show_relevance_scores: false
-
 
 # ======================
 # Настройки Qdrant
@@ -59,28 +76,29 @@ qdrant:
   host: "localhost"
   port: 6333
   collection_name: "document_chunks"
-  vector_size: 768       # Размерность векторов модели
+  vector_size: 768
   
   # Параметры поиска
   search_params:
-    limit: 10            # Макс. результатов поиска
-    with_payload: true   # Включать метаданные
-    with_vectors: false  # Не возвращать векторы
-    exact_search: false  # Приближенный поиск
+    limit: 10
+    with_payload: true
+    with_vectors: false
+    exact_search: false
+    timeout: 30.0  # seconds
 
 # ======================
 # Пути к директориям
 # ======================
 paths:
   log_file: "logs/application.log"
-  data_dir: "data"               # Исходные файлы
-  output_dir: "processed"        # Обработанные чанки
-  index_dir: "index"             # Индексы и метаданные
-  log_dir: "logs"                # Директория логов
-  temp_dir: "temp"               # Временные файлы
+  data_dir: "data"
+  output_dir: "processed"
+  index_dir: "index"
+  log_dir: "logs"
+  temp_dir: "temp"
   global_index_file: "global_index.json"
   
-  protected_files:               # Файлы, которые не удаляются
+  protected_files:
     - "global_index.json"
     - "processing_info.json"
 
@@ -89,15 +107,16 @@ paths:
 # ======================
 llm:
   api_url: "http://localhost:1234/v1"
-  model: "google/gemma-3-4b"         # Имя модели в LM Studio/Ollama
+  model: "google/gemma-3-4b"
+  timeout: 60.0  # seconds
   
   # Параметры генерации
   generation_params:
-    temperature: 0.3          # Креативность (0-1)
-    max_tokens: 1000          # Макс. длина ответа
-    top_p: 0.9                # Дискретизация вывода
-    frequency_penalty: 0.2    # Штраф за повторения
-    presence_penalty: 0.2     # Штраф за новые темы
+    temperature: 0.3
+    max_tokens: 1000
+    top_p: 0.9
+    frequency_penalty: 0.2
+    presence_penalty: 0.2
   
   # Системный промпт
   system_prompt: |
@@ -105,18 +124,35 @@ llm:
     Используй только предоставленный контекст. Если информации нет - скажи об этом.
 
 # ======================
-# Настройки OCR (опционально)
+# Настройки OCR
 # ======================
 ocr:
-  enabled: false              # Включить распознавание текста
-  languages: ["rus", "eng"]   # Языки для распознавания
-  dpi: 300                    # Разрешение обработки
-  timeout: 30                 # Таймаут в секундах
+  enabled: false
+  languages: ["rus", "eng"]
+  dpi: 300
+  timeout: 30
+  engine: "tesseract"  # tesseract/easyocr
 
 # ======================
 # Настройки таблиц
 # ======================
 tables:
-  enabled: true               # Извлекать таблицы
-  max_table_size: 10          # Макс. строк в таблице
-  format: "markdown"          # markdown/csv/json
+  enabled: true
+  max_table_size: 10
+  format: "markdown"  # markdown/csv/json
+  extraction_method: "camelot"  # camelot/pdfplumber
+
+# ======================
+# Настройки безопасности
+# ======================
+security:
+  max_upload_size_mb: 300
+  allowed_file_types:
+    - "application/pdf"
+    - "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    - "application/msword"
+    - "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    - "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    - "text/plain"
+  enable_auth: false
+  api_key: ""

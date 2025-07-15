@@ -3,6 +3,7 @@
 venv-offline/
 
 # Данные и кэши
+index/
 qdrant/
 storage/
 data/
