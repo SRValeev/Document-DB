@@ -163,31 +163,48 @@ class OfflineDistributionBuilder:
     
     def download_spacy_model(self):
         """Download SpaCy model"""
-        print(f"\n📝 Downloading SpaCy model: {OFFLINE_CONFIG['models']['spacy_model']}")
+        print(f"\n[#] Downloading SpaCy model: {OFFLINE_CONFIG['models']['spacy_model']}")
         print(f"   Size: ~{OFFLINE_CONFIG['models']['spacy_model_size']}")
         
         spacy_dir = self.package_dir / "models" / "spacy"
         
         try:
-            # Download SpaCy model using pip
-            cmd = [
-                sys.executable, "-m", "pip", "download",
-                "--dest", str(spacy_dir),
-                f"https://github.com/explosion/spacy-models/releases/download/{OFFLINE_CONFIG['models']['spacy_model']}-3.7.0/{OFFLINE_CONFIG['models']['spacy_model']}-3.7.0.tar.gz"
-            ]
+            # SpaCy model direct download URL
+            model_name = OFFLINE_CONFIG['models']['spacy_model']
+            model_version = "3.7.0"
+            download_url = f"https://github.com/explosion/spacy-models/releases/download/{model_name}-{model_version}/{model_name}-{model_version}.tar.gz"
             
-            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-            print(f"  ✓ Downloaded SpaCy model to {spacy_dir}")
+            print(f"  Downloading from: {download_url}")
+            
+            # Download SpaCy model using requests
+            import requests
+            response = requests.get(download_url, stream=True, timeout=300)
+            response.raise_for_status()
+            
+            model_file = spacy_dir / f"{model_name}-{model_version}.tar.gz"
+            
+            # Save the model file
+            with open(model_file, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+            
+            print(f"  [+] Downloaded SpaCy model to {model_file}")
+            print(f"  [+] File size: {model_file.stat().st_size / 1024 / 1024:.1f} MB")
             
             # Create model info
             import datetime
             spacy_info = {
-                "model_name": OFFLINE_CONFIG['models']['spacy_model'],
+                "model_name": model_name,
+                "model_version": model_version,
                 "model_type": "spacy",
                 "language": "ru",
                 "components": ["tok2vec", "tagger", "parser", "senter", "ner", "attribute_ruler", "lemmatizer"],
                 "local_path": "models/spacy",
-                "downloaded_at": datetime.datetime.now().isoformat()
+                "file_name": f"{model_name}-{model_version}.tar.gz",
+                "download_url": download_url,
+                "downloaded_at": datetime.datetime.now().isoformat(),
+                "installation_command": f"pip install {model_file.name}"
             }
             
             with open(spacy_dir / "spacy_info.json", "w", encoding="utf-8") as f:
@@ -195,8 +212,11 @@ class OfflineDistributionBuilder:
             
             return True
             
+        except requests.RequestException as e:
+            print(f"  [ERROR] Network error downloading SpaCy model: {e}")
+            return False
         except Exception as e:
-            print(f"  ❌ Error downloading SpaCy model: {e}")
+            print(f"  [ERROR] Error downloading SpaCy model: {e}")
             return False
     
     def copy_application_code(self):
