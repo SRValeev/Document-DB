@@ -337,7 +337,7 @@ param(
 $ErrorActionPreference = "Stop"
 $VerbosePreference = if ($Verbose) { "Continue" } else { "SilentlyContinue" }
 
-Write-Host "🚀 RAG Document Assistant v2.0 Offline Installer" -ForegroundColor Green
+Write-Host "[*] RAG Document Assistant v2.0 Offline Installer" -ForegroundColor Green
 Write-Host "📍 Installation path: $InstallPath" -ForegroundColor Yellow
 
 # Check if running as Administrator
@@ -379,7 +379,7 @@ try {
 }
 
 # Create virtual environment
-Write-Host "🔧 Creating virtual environment..."
+Write-Host "[#] Creating virtual environment..."
 $VenvPath = Join-Path $InstallPath "venv"
 python -m venv $VenvPath
 if ($LASTEXITCODE -ne 0) {
@@ -388,7 +388,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # Install packages from wheels (no need to activate venv, use full path)
-Write-Host "📦 Installing Python packages..."
+Write-Host "[#] Installing Python packages..."
 $WheelsPath = Join-Path $PSScriptRoot "..\\wheels"
 $PythonExe = Join-Path $VenvPath "Scripts\\python.exe"
 $PipExe = Join-Path $VenvPath "Scripts\\pip.exe"
@@ -407,7 +407,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # Install SpaCy model
-Write-Host "📝 Installing SpaCy model..."
+Write-Host "[#] Installing SpaCy model..."
 $SpacyModelPath = Join-Path $PSScriptRoot "..\\models\\spacy"
 $SpacyModel = Get-ChildItem $SpacyModelPath -Filter "*.tar.gz" | Select-Object -First 1
 if ($SpacyModel) {
@@ -422,12 +422,12 @@ if ($SpacyModel) {
 }
 
 # Copy application code
-Write-Host "📄 Copying application code..."
+Write-Host "[#] Copying application code..."
 $SourceApp = Join-Path $PSScriptRoot "..\\app"
 Copy-Item -Recurse -Force "$SourceApp\\*" $AppPath
 
 # Copy and configure environment
-Write-Host "⚙️  Configuring environment..."
+Write-Host "[#] Configuring environment..."
 $ConfigPath = Join-Path $PSScriptRoot "..\\config"
 Copy-Item "$ConfigPath\\.env.offline" "$InstallPath\\.env"
 
@@ -444,7 +444,7 @@ $EnvContent = $EnvContent -replace "GENERATE_DURING_INSTALL", $SecretKey
 Set-Content "$InstallPath\\.env" $EnvContent
 
 # Create service script
-Write-Host "🔧 Creating service files..."
+Write-Host "[#] Creating service files..."
 $ServiceScript = @"
 @echo off
 cd /d `"$InstallPath`"
@@ -458,7 +458,7 @@ Set-Content "$InstallPath\start_service.bat" $ServiceScript
 # Create Windows Service (optional)
 $NSSMPath = "C:\nssm\nssm.exe"
 if (Test-Path $NSSMPath) {
-    Write-Host "🔧 Installing Windows Service..."
+    Write-Host "[#] Installing Windows Service..."
     try {
         & $NSSMPath install "RAGAssistant" "$InstallPath\start_service.bat"
         & $NSSMPath set "RAGAssistant" Description "RAG Document Assistant v2.0"
@@ -469,18 +469,18 @@ if (Test-Path $NSSMPath) {
         Write-Warning "⚠️  Failed to install Windows Service: $_"
     }
 } else {
-    Write-Host "  ℹ️  NSSM not found at C:\nssm\nssm.exe - skipping Windows Service installation" -ForegroundColor Yellow
-    Write-Host "  ℹ️  To install as service later, download NSSM and run:" -ForegroundColor Yellow
+    Write-Host "  [i] NSSM not found at C:\nssm\nssm.exe - skipping Windows Service installation" -ForegroundColor Yellow
+    Write-Host "  [i] To install as service later, download NSSM and run:" -ForegroundColor Yellow
     Write-Host "     nssm install RAGAssistant `"$InstallPath\start_service.bat`"" -ForegroundColor Yellow
 }
 
 # Installation summary
 Write-Host ""
-Write-Host "✅ Installation completed successfully!" -ForegroundColor Green
-Write-Host "📍 Installation path: $InstallPath" -ForegroundColor Yellow
-Write-Host "🌐 To start manually: cd '$InstallPath' && start_service.bat" -ForegroundColor Yellow
-Write-Host "🔧 Service name: RAGAssistant (if NSSM available)" -ForegroundColor Yellow
-Write-Host "📖 Access at: http://localhost:8000" -ForegroundColor Yellow
+Write-Host "[SUCCESS] Installation completed successfully!" -ForegroundColor Green
+Write-Host "[*] Installation path: $InstallPath" -ForegroundColor Yellow
+Write-Host "[*] To start manually: cd '$InstallPath' && start_service.bat" -ForegroundColor Yellow
+Write-Host "[*] Service name: RAGAssistant (if NSSM available)" -ForegroundColor Yellow
+Write-Host "[*] Access at: http://localhost:8000" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Cyan
 Write-Host "1. Start Qdrant vector database" -ForegroundColor White

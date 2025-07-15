@@ -1,37 +1,37 @@
 @echo off
-chcp 65001 > nul
+chcp 65001 > nul 2>&1
 setlocal enabledelayedexpansion
 
-:: Установка RAG Document Assistant для Windows
-:: Версия 1.2 (оффлайн-совместимая)
+:: RAG Document Assistant Windows Installation
+:: Version 1.2 (offline-compatible)
 
-:: Конфигурация
+:: Configuration
 set VENV_DIR=.venv
 set QDRANT_VERSION=v1.7.1
 set QDRANT_URL=https://github.com/qdrant/qdrant/releases/download/%QDRANT_VERSION%/qdrant-x86_64-pc-windows-msvc.zip
 set GHOSTSCRIPT_URL=https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10051/gs10051w64.exe
 
-:: Проверка Python
+:: Check Python
 python --version >nul 2>&1
 if %ERRORLEVEL% neq 0 (
-    echo Ошибка: Python не установлен или не добавлен в PATH
-    echo Установите Python 3.9+ и добавьте в PATH
+    echo [ERROR] Python is not installed or not added to PATH
+    echo Please install Python 3.9+ and add to PATH
     pause
     exit /b 1
 )
 
-:: Проверка архитектуры
+:: Check architecture
 set ARCH=64
 if "%PROCESSOR_ARCHITECTURE%" == "x86" (
     set ARCH=32
-    echo Предупреждение: 32-битная система, возможны проблемы с некоторыми моделями
+    echo [!] Warning: 32-bit system, possible issues with some models
 )
 
-:: Создание виртуального окружения
-echo Создание виртуального окружения...
+:: Create virtual environment
+echo [*] Creating virtual environment...
 python -m venv %VENV_DIR%
 if not exist "%VENV_DIR%\Scripts\activate.bat" (
-    echo Ошибка создания виртуального окружения
+    echo [ERROR] Failed to create virtual environment
     pause
     exit /b 1
 )
@@ -39,8 +39,8 @@ if not exist "%VENV_DIR%\Scripts\activate.bat" (
 :: Активация venv
 call %VENV_DIR%\Scripts\activate.bat
 
-:: Установка базовых зависимостей
-echo Установка Python-зависимостей...
+:: Install basic dependencies
+echo [*] Installing Python dependencies...
 pip install --upgrade pip
 if exist "requirements\requirements_offline" (
     pip install --no-index --find-links=requirements\requirements_offline -r requirements\requirements_offline\requirements.txt
@@ -48,8 +48,8 @@ if exist "requirements\requirements_offline" (
     pip install -r requirements\requirements.txt
 )
 
-:: Установка моделей spaCy (оффлайн или онлайн)
-echo Установка моделей spaCy...
+:: Install spaCy models (offline or online)
+echo [*] Installing spaCy models...
 if exist "models\ru_core_news_lg" (
     python -m spacy link models\ru_core_news_lg ru_core_news_lg --force
 ) else (
@@ -62,8 +62,8 @@ if exist "models\ru_core_news_md" (
     python -m spacy download ru_core_news_md
 )
 
-:: Установка Qdrant
-echo Установка Qdrant...
+:: Install Qdrant
+echo [*] Installing Qdrant...
 if not exist "qdrant\qdrant.exe" (
     if exist "qdrant-offline\qdrant-x86_64-pc-windows-msvc.exe" (
         mkdir qdrant 2>nul
@@ -76,8 +76,8 @@ if not exist "qdrant\qdrant.exe" (
     )
 )
 
-:: Установка Ghostscript (для Camelot)
-echo Установка Ghostscript...
+:: Install Ghostscript (for Camelot)
+echo [*] Installing Ghostscript...
 if not exist "C:\Program Files\gs" (
     if exist "dependencies\gsinstaller.exe" (
         start /wait dependencies\gsinstaller.exe /S
@@ -88,16 +88,16 @@ if not exist "C:\Program Files\gs" (
     )
 )
 
-:: Установка Camelot и OpenCV (оффлайн)
-echo Установка Camelot...
+:: Install Camelot and OpenCV (offline)
+echo [*] Installing Camelot...
 if exist "dependencies\python_packages" (
     pip install --no-index --find-links=dependencies\python_packages camelot-py[base] opencv-python
 ) else (
     pip install camelot-py[base] opencv-python
 )
 
-:: Создание директорий
-echo Создание рабочих директорий...
+:: Create directories
+echo [*] Creating working directories...
 mkdir data 2>nul
 mkdir processed 2>nul
 mkdir temp 2>nul
@@ -105,24 +105,24 @@ mkdir qdrant\storage 2>nul
 mkdir log 2>nul
 mkdir models 2>nul
 
-:: Проверка установки
-echo Проверка установки...
-python -c "import spacy, camelot, sentence_transformers; print('Проверка завершена успешно')" || (
-    echo Ошибка проверки зависимостей
+:: Check installation
+echo [*] Checking installation...
+python -c "import spacy, camelot, sentence_transformers; print('Check completed successfully')" || (
+    echo [ERROR] Dependencies check failed
     pause
     exit /b 1
 )
 
 echo.
 echo ============================================
-echo Установка завершена успешно!
+echo [SUCCESS] Installation completed successfully!
 echo.
-echo Для запуска сервиса выполните:
+echo To start the service run:
 echo   scripts\startup.bat
 echo.
-echo Для оффлайн-установки скопируйте на целевой ПК:
-echo - Каталог models с NLP-моделями
-echo - Каталог dependencies с системными пакетами
-echo - Каталог qdrant-offline с бинарником Qdrant
+echo For offline installation copy to target PC:
+echo - models directory with NLP models
+echo - dependencies directory with system packages
+echo - qdrant-offline directory with Qdrant binary
 echo ============================================
 pause

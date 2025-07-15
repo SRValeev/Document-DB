@@ -8,7 +8,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "📥 Downloading Qdrant $QdrantVersion for offline distribution..." -ForegroundColor Green
+Write-Host "[>>] Downloading Qdrant $QdrantVersion for offline distribution..." -ForegroundColor Green
 
 # Create output directory
 $ToolsDir = Join-Path $OutputDir "qdrant"
@@ -99,11 +99,11 @@ pause
     
     $QdrantInfo | ConvertTo-Json -Depth 3 | Set-Content (Join-Path $ToolsDir "qdrant_info.json")
     
-    Write-Host "✅ Qdrant offline package prepared successfully!" -ForegroundColor Green
-    Write-Host "📍 Location: $ToolsDir" -ForegroundColor Yellow
-    Write-Host "🚀 Start with: start_qdrant.bat" -ForegroundColor Yellow
+    Write-Host "[SUCCESS] Qdrant offline package prepared successfully!" -ForegroundColor Green
+    Write-Host "[*] Location: $ToolsDir" -ForegroundColor Yellow
+    Write-Host "[*] Start with: start_qdrant.bat" -ForegroundColor Yellow
     
 } catch {
-    Write-Error "❌ Failed to download Qdrant: $_"
+    Write-Error "[ERROR] Failed to download Qdrant: $_"
     exit 1
 }

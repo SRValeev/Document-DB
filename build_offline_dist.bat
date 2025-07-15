@@ -1,11 +1,11 @@
 @echo off
-chcp 65001 > nul
+chcp 65001 > nul 2>&1
 setlocal enabledelayedexpansion
 
 :: RAG Document Assistant v2.0 - Offline Distribution Builder
 :: Main build script for Windows offline distribution
 
-echo 🚀 RAG Document Assistant v2.0 - Offline Distribution Builder
+echo [*] RAG Document Assistant v2.0 - Offline Distribution Builder
 echo ================================================================
 echo.
 
@@ -23,58 +23,58 @@ echo Build version: %DIST_VERSION% >> %BUILD_LOG%
 echo. >> %BUILD_LOG%
 
 :: Check prerequisites
-echo 📋 Checking prerequisites...
+echo [-] Checking prerequisites...
 echo [%date% %time%] Checking prerequisites >> %BUILD_LOG%
 
 :: Check Python
 python --version >nul 2>&1
 if %ERRORLEVEL% neq 0 (
-    echo ❌ Python is required but not found in PATH
+    echo [ERROR] Python is required but not found in PATH
     echo [%date% %time%] ERROR: Python not found >> %BUILD_LOG%
     goto :error
 )
 
 :: Check required modules
-echo 🔍 Checking Python modules...
+echo [?] Checking Python modules...
 python -c "import huggingface_hub, requests, spacy" >nul 2>&1
 if %ERRORLEVEL% neq 0 (
-    echo ❌ Required Python modules missing. Installing...
+    echo [!] Required Python modules missing. Installing...
     echo [%date% %time%] Installing build dependencies >> %BUILD_LOG%
     pip install -r scripts\build_offline_requirements.txt >> %BUILD_LOG% 2>&1
     if %ERRORLEVEL% neq 0 (
-        echo ❌ Failed to install build dependencies
+        echo [ERROR] Failed to install build dependencies
         goto :error
     )
-    echo ✓ Build dependencies installed
+    echo [+] Build dependencies installed
 )
 
 :: Check PowerShell
 powershell -Command "Get-Host" >nul 2>&1
 if %ERRORLEVEL% neq 0 (
-    echo ❌ PowerShell is required but not available
+    echo [ERROR] PowerShell is required but not available
     echo [%date% %time%] ERROR: PowerShell not available >> %BUILD_LOG%
     goto :error
 )
 
-echo ✅ Prerequisites check completed
+echo [OK] Prerequisites check completed
 echo.
 
 :: Step 1: Build main distribution
-echo 🔨 Step 1: Building main distribution package...
+echo [#] Step 1: Building main distribution package...
 echo [%date% %time%] Starting main distribution build >> %BUILD_LOG%
 
 python "scripts\build_offline_distribution.py" --output "%OUTPUT_DIR%" >> "%BUILD_LOG%" 2>&1
 if %ERRORLEVEL% neq 0 (
-    echo ❌ Failed to build main distribution
+    echo [ERROR] Failed to build main distribution
     echo [%date% %time%] ERROR: Main distribution build failed >> %BUILD_LOG%
     goto :error
 )
 
-echo ✓ Main distribution package created
+echo [+] Main distribution package created
 echo.
 
 :: Step 2: Download Qdrant
-echo 📥 Step 2: Downloading Qdrant vector database...
+echo [>>] Step 2: Downloading Qdrant vector database...
 echo [%date% %time%] Downloading Qdrant >> %BUILD_LOG%
 
 :: Create temporary package directory for Qdrant
@@ -83,16 +83,16 @@ if not exist %QDRANT_DIR% mkdir %QDRANT_DIR%
 
 powershell -ExecutionPolicy Bypass -File "scripts\download_qdrant_offline.ps1" -OutputDir "%QDRANT_DIR%" >> "%BUILD_LOG%" 2>&1
 if %ERRORLEVEL% neq 0 (
-    echo ❌ Failed to download Qdrant
+    echo [ERROR] Failed to download Qdrant
     echo [%date% %time%] ERROR: Qdrant download failed >> %BUILD_LOG%
     goto :error
 )
 
-echo ✓ Qdrant downloaded and configured
+echo [+] Qdrant downloaded and configured
 echo.
 
 :: Step 3: Create final archive
-echo 📦 Step 3: Creating final distribution archive...
+echo [#] Step 3: Creating final distribution archive...
 echo [%date% %time%] Creating final archive >> %BUILD_LOG%
 
 :: Update the archive with Qdrant
@@ -113,59 +113,59 @@ if %ERRORLEVEL% equ 0 (
 )
 
 if %ERRORLEVEL% neq 0 (
-    echo ❌ Failed to create final archive
+    echo [ERROR] Failed to create final archive
     echo [%date% %time%] ERROR: Archive creation failed >> %BUILD_LOG%
     goto :error
 )
 
-echo ✓ Final archive created: %ARCHIVE_NAME%
+echo [+] Final archive created: %ARCHIVE_NAME%
 echo.
 
 :: Step 4: Generate checksums
-echo 🔐 Step 4: Generating checksums...
+echo [#] Step 4: Generating checksums...
 echo [%date% %time%] Generating checksums >> %BUILD_LOG%
 
 powershell -Command "Get-FileHash '%OUTPUT_DIR%\%ARCHIVE_NAME%' -Algorithm SHA256" > %OUTPUT_DIR%\%ARCHIVE_NAME%.sha256
 if %ERRORLEVEL% neq 0 (
-    echo ⚠️  Warning: Failed to generate checksum
+    echo [!] Warning: Failed to generate checksum
     echo [%date% %time%] WARNING: Checksum generation failed >> %BUILD_LOG%
 ) else (
-    echo ✓ SHA256 checksum generated
+    echo [+] SHA256 checksum generated
 )
 
 :: Step 5: Create deployment guide
-echo 📚 Step 5: Creating deployment guide...
+echo [i] Step 5: Creating deployment guide...
 echo [%date% %time%] Creating deployment guide >> %BUILD_LOG%
 
 call :create_deployment_guide
 
-echo ✓ Deployment guide created
+echo [+] Deployment guide created
 echo.
 
 :: Build summary
 echo ================================================================
-echo ✅ Offline distribution build completed successfully!
+echo [SUCCESS] Offline distribution build completed successfully!
 echo ================================================================
 echo.
-echo 📦 Distribution: %ARCHIVE_NAME%
-echo 📍 Location: %OUTPUT_DIR%\
-echo 📏 Size: 
+echo [#] Distribution: %ARCHIVE_NAME%
+echo [*] Location: %OUTPUT_DIR%\
+echo [*] Size: 
 for %%A in (%OUTPUT_DIR%\%ARCHIVE_NAME%) do echo    %%~zA bytes
 
 :: Get file size in MB
 powershell -Command "'{0:N1} MB' -f ((Get-Item '%OUTPUT_DIR%\%ARCHIVE_NAME%').Length / 1MB)"
 
 echo.
-echo 📋 Package Contents:
-echo    ✓ Python packages (all dependencies)
-echo    ✓ Heavy ML models (intfloat/multilingual-e5-large, ru_core_news_lg)
-echo    ✓ Application source code
-echo    ✓ Qdrant vector database
-echo    ✓ Installation scripts
-echo    ✓ Configuration templates
-echo    ✓ Documentation
+echo [-] Package Contents:
+echo    [+] Python packages (all dependencies)
+echo    [+] Heavy ML models (intfloat/multilingual-e5-large, ru_core_news_lg)
+echo    [+] Application source code
+echo    [+] Qdrant vector database
+echo    [+] Installation scripts
+echo    [+] Configuration templates
+echo    [+] Documentation
 echo.
-echo 🚀 Next steps:
+echo [*] Next steps:
 echo    1. Copy %ARCHIVE_NAME% to your offline Windows server
 echo    2. Extract the archive
 echo    3. Read DEPLOYMENT_GUIDE.txt
@@ -177,7 +177,7 @@ goto :end
 
 :error
 echo.
-echo ❌ Build failed! Check %BUILD_LOG% for details.
+echo [ERROR] Build failed! Check %BUILD_LOG% for details.
 echo [%date% %time%] Build failed >> %BUILD_LOG%
 pause
 exit /b 1
