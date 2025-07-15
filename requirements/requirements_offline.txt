@@ -1,3 +1,0 @@
---find-links ./wheelhouse
---no-index
--r requirements.txt
