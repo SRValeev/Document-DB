@@ -5,6 +5,11 @@ from typing import List, Dict, Any
 from sklearn.metrics.pairwise import cosine_similarity
 from nltk.corpus import stopwords
 import nltk
+from utils.helpers import setup_logging, load_config
+
+config = load_config()
+setup_logging(config['paths']['log_file'])
+logger = logging.getLogger(__name__)
 
 # Загрузка стоп-слов при импорте
 try:
@@ -26,6 +31,7 @@ class ContextBuilder:
             self.diversity_factor = self.context_config.get('diversity_factor', 0.3)
             self.min_relevance = self.context_config.get('min_relevance', 0.65)
             self.max_chunks = self.context_config.get('max_chunks', 5)
+            self.clean_stopwords = self.context_config.get('clean_stopwords', True)
 
     def build_context(self, query_embedding: List[float], qdrant_results: List) -> str:
         """Строит контекст строго по параметрам из config.yaml"""
@@ -85,7 +91,7 @@ class ContextBuilder:
                     f"{'-'*40}\n"
                 )
             except Exception as e:
-                self.logger.warning(f"Ошибка форматирования чанка: {str(e)}")
+                logger.warning(f"Ошибка форматирования чанка: {str(e)}")
                 
         return "\n".join(context_parts) if context_parts else ""
 
@@ -102,22 +108,15 @@ class ContextBuilder:
             if hasattr(r, 'vector') and r.vector is not None:
                 # Проверяем на NaN
                 if not any(np.isnan(x) for x in r.vector):
-                    doc_vectors.append(r.vector)
+                    doc_vectors.append(np.array(r.vector))  # Convert to numpy array
                     valid_results.append(r)
         
         if not doc_vectors:
             return results[:self.max_chunks]
         
         # Преобразуем в numpy array и проверяем форму
-        doc_vectors = np.array(doc_vectors)
-        query_embedding = np.array(query_embedding)
-        
-        # Проверяем размерности
-        if query_embedding.ndim == 1:
-            query_embedding = query_embedding.reshape(1, -1)
-        
-        if doc_vectors.ndim == 1:
-            doc_vectors = doc_vectors.reshape(-1, 1)
+        doc_vectors = np.vstack(doc_vectors)  # Stack vectors into 2D array
+        query_embedding = np.array(query_embedding).reshape(1, -1)  # Ensure 2D array
         
         # Сходство с запросом
         query_sim = cosine_similarity(query_embedding, doc_vectors)[0]

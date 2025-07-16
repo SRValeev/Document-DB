@@ -16,8 +16,9 @@ import logging
 import json
 from datetime import datetime
 import pandas as pd
+from typing import Dict, List, Optional, Any, Union
 from collections import defaultdict
-from typing import Dict, List, Optional
+
 
 router = APIRouter()
 config = load_config()
@@ -81,13 +82,15 @@ async def get_detailed_stats() -> Dict:
             
             if 'processing_date' in metadata:
                 try:
-                    date_obj = datetime.strptime(metadata['processing_date'], '%Y-%m-%d')
-                    if not doc_stats[file_id]['first_seen'] or date_obj < doc_stats[file_id]['first_seen']:
-                        doc_stats[file_id]['first_seen'] = date_obj
-                    if not doc_stats[file_id]['last_seen'] or date_obj > doc_stats[file_id]['last_seen']:
-                        doc_stats[file_id]['last_seen'] = date_obj
-                    date_data.append(date_obj)
-                except ValueError:
+                    date_str = metadata['processing_date']
+                    if isinstance(date_str, str):
+                        date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+                        if doc_stats[file_id]['first_seen'] is None or date_obj < doc_stats[file_id]['first_seen']:
+                            doc_stats[file_id]['first_seen'] = date_obj
+                        if doc_stats[file_id]['last_seen'] is None or date_obj > doc_stats[file_id]['last_seen']:
+                            doc_stats[file_id]['last_seen'] = date_obj
+                        date_data.append(date_obj)
+                except (ValueError, TypeError):
                     pass
             
             content_type = metadata.get('type', 'unknown')
@@ -173,9 +176,11 @@ async def dashboard(request: Request):
             status_code=500
         )
     
-def _get_file_types_stats(global_index: dict) -> dict:
+def _get_file_types_stats(global_index: Optional[Dict[str, Any]]) -> Dict[str, int]:
     """Статистика по типам файлов"""
-    from collections import defaultdict
+    if not global_index:
+        return {}
+    
     types = defaultdict(int)
     for file in global_index.get('files', []):
         if 'path' in file:
@@ -409,7 +414,7 @@ async def chat_with_document(request: Request, data: Dict = Body(...)):
         llm_response = await llm_client.generate_response(
             prompt=question,
             context=context,
-            **llm_config['generation_params']
+            **llm_config.get('generation_params', {})
         )
 
         return {"response": llm_response}

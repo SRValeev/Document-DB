@@ -6,6 +6,7 @@ from qdrant_client.models import PointStruct, VectorParams, Distance
 from utils.helpers import load_config, setup_logging
 from utils.helpers import clear_directory
 import logging
+import numpy as np
 
 def main() -> int:
     """Основная функция загрузки данных в Qdrant"""

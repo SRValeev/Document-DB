@@ -1,81 +1,43 @@
-# Requirements for Python 3.12+ compatibility
-# ============================================
-# Use this file for Python 3.12+ installations
+# Основные зависимости
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
 
-# FastAPI Core - Python 3.12 compatible
-fastapi>=0.104.0,<0.110.0
-uvicorn[standard]>=0.24.0,<0.30.0
-pydantic>=2.4.0,<3.0.0
-pydantic-settings>=2.0.0,<3.0.0
+# Базы данных и векторные хранилища
+qdrant-client==1.8.0
+redis==5.0.1
 
-# Authentication & Security
-python-jose[cryptography]>=3.3.0,<4.0.0
-passlib[bcrypt]>=1.7.4,<2.0.0
-python-multipart>=0.0.6,<1.0.0
+# Обработка документов
+pymupdf==1.23.7
+python-docx==1.1.0
+python-pptx==0.6.23
+openpyxl==3.1.2
+camelot-py[base]==0.11.0
+pytesseract==0.3.10
+pillow==10.1.0
 
-# Database & Vector Store
-qdrant-client>=1.7.0,<2.0.0
-redis>=5.0.0,<6.0.0
+# NLP и ML
+spacy==3.7.0
+sentence-transformers==2.2.2
+transformers==4.36.2
+torch==2.1.2
+nltk==3.8.1
+scikit-learn==1.3.2
 
-# Document Processing
-pymupdf>=1.23.0,<2.0.0
-python-docx>=1.1.0,<2.0.0
-aiofiles>=23.2.1,<24.0.0
-python-pptx
-openpyxl
+# Утилиты
+pyyaml==6.0.1
+tqdm==4.66.1
+tenacity==8.2.3  # Для retry-логики
+python-multipart==0.0.6
 
-# NLP & ML - Python 3.12 compatible
-sentence-transformers>=2.2.2,<3.0.0
-spacy>=3.7.0,<4.0.0
-nltk>=3.8.1,<4.0.0
+# Тестирование (только для разработки)
+pytest==7.4.3
+pytest-asyncio==0.23.5
+httpx==0.26.0
 
-# PyTorch ecosystem - Python 3.12 compatible
-torch>=2.1.0,<3.0.0
-torchvision>=0.16.0,<1.0.0
-torchaudio>=2.1.0,<3.0.0
+# Для Windows-служб (опционально)
+nssm==2.24
 
-# Transformers ecosystem
-transformers>=4.30.0,<5.0.0
-tokenizers>=0.15.0,<1.0.0
-safetensors>=0.4.0,<1.0.0
-accelerate>=0.20.0,<1.0.0
-
-# Scientific computing - NumPy 2.0 compatible
-numpy>=1.24.0,<3.0.0
-scipy>=1.11.0,<2.0.0
-scikit-learn>=1.3.0,<2.0.0
-pandas>=2.0.0,<3.0.0
-
-# Image processing
-Pillow>=10.0.0,<11.0.0
-opencv-python>=4.8.0,<5.0.0
-
-# OCR (optional)
-pytesseract>=0.3.10,<1.0.0
-
-# HTTP Clients
-httpx>=0.25.0,<1.0.0
-requests>=2.31.0,<3.0.0
-
-# Utilities
-pyyaml>=6.0.1,<7.0.0
-python-dateutil>=2.8.2,<3.0.0
-tqdm>=4.66.0,<5.0.0
-click>=8.1.0,<9.0.0
-typer>=0.9.0,<1.0.0
-
-# Development & Testing (optional)
-pytest>=7.4.0,<9.0.0
-pytest-asyncio>=0.21.0,<1.0.0
-pytest-cov>=4.1.0,<5.0.0
-black>=23.0.0,<25.0.0
-isort>=5.12.0,<6.0.0
-flake8>=6.0.0,<8.0.0
-
-# Production
-gunicorn>=21.2.0,<23.0.0
-
-# NOTE: SpaCy models are not PyPI packages
-# Install separately using:
+# NOTE: SpaCy модели устанавливаются отдельно
 # python -m spacy download ru_core_news_lg
-# Or see spacy_models.txt for offline installation
