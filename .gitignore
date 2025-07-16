@@ -12,7 +12,7 @@ snapshots/
 __pycache__/
 *.pyc
 .env
-
+*DIST*
 # Логи
 *.log
 

@@ -4,8 +4,8 @@
 - Активировать виртуальное окружение.
 **Установить зависимости, для запуска на минималках желательно использовать u_core_news_md и sentence-transformers/paraphrase-multilingual-mpnet-base-v2**
 - pip install --upgrade pip
-- python -m spacy download ru_core_news_md
 - pip install -r requirements\requirements.txt
+- python -m spacy download ru_core_news_md
 
 ## Linux Deployment
 ```bash
@@ -16,7 +16,14 @@ SPACY_MODEL="ru_core_news_lg" python -m spacy download $SPACY_MODEL
 ```
 
 # Сборка для переноса на комп без интернета.
-- Для сборки архива необходимо запустить build_dist.bat, ниже что делать с собранным архивом.
+**Перед запуском сборки обязательно содать виртуальное окружение, ативировать его, установить зависимости**
+- python -m venv "%VENV_NAME%"
+- pip install -r requirements\requirements.txt
+**Для сборки архива необходимо запустить build_dist.bat**
+**С некоторой вероятностью модели не скачаются и их нужно будет подложить ручками в папку с моделями**
+- https://github.com/explosion/spacy-models/releases/download/ru_core_news_lg-3.7.0/ru_core_news_lg-3.7.0-py3-none-any.whl
+- python -c "from sentence_transformers import SentenceTransformer; model = SentenceTransformer('intfloat/multilingual-e5-large'); model.save(r'%DIST_DIR%\\models\\multilingual-e5-large')"
+- или https://huggingface.co/intfloat/multilingual-e5-large
 
 ## Требования к целевому серверу
 - Установите Python 3.1+ (скачать оффлайн-установщик:
