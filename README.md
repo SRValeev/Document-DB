@@ -18,8 +18,13 @@ pip install -r requirements.txt
 SPACY_MODEL="ru_core_news_lg" python -m spacy download $SPACY_MODEL
 ```
 
+## Для переноса на комп. без доступа к сети интернет
+ - create_offline_package.py скачает все нужные папки в каталог models
+ - переносим проет туда где нет интенета.
+ - запускаем install_offline.py
+ - **работоспособность не проверял**
 
-**Большие модели**
+## Большие модели
 - https://github.com/explosion/spacy-models/releases/download/ru_core_news_lg-3.7.0/ru_core_news_lg-3.7.0-py3-none-any.whl
 - python -c "from sentence_transformers import SentenceTransformer; model = SentenceTransformer('intfloat/multilingual-e5-large'); model.save(r'%DIST_DIR%\\models\\multilingual-e5-large')"
 - или https://huggingface.co/intfloat/multilingual-e5-large
