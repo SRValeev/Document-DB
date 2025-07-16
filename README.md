@@ -1,5 +1,8 @@
 # RAG Document Assistant v2.0 🚀
 ## Перед запуском
+**Скачать и установить**
+- https://github.com/qdrant/qdrant/releases
+- https://www.ghostscript.com/releases/gpdldnld.html
 - Создать виртуальное окружение python -m venv "%VENV_NAME%"
 - Активировать виртуальное окружение.
 **Установить зависимости, для запуска на минималках желательно использовать u_core_news_md и sentence-transformers/paraphrase-multilingual-mpnet-base-v2**
@@ -16,6 +19,10 @@ SPACY_MODEL="ru_core_news_lg" python -m spacy download $SPACY_MODEL
 ```
 
 # Сборка для переноса на комп без интернета.
+**Скачать и установить**
+- https://github.com/qdrant/qdrant/releases
+- https://www.ghostscript.com/releases/gpdldnld.html
+
 **Перед запуском сборки обязательно содать виртуальное окружение, ативировать его, установить зависимости**
 - python -m venv "%VENV_NAME%"
 - pip install -r requirements\requirements.txt
